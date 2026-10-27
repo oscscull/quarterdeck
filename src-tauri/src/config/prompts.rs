@@ -17,6 +17,7 @@ pub enum Prompt {
     Message,
     Workspace,
     IssueWorkspace,
+    NewWorkspace,
     NoWorkspace,
     Queue,
 }
@@ -37,6 +38,7 @@ impl Prompt {
             Self::Message => "message.md",
             Self::Workspace => "workspace.md",
             Self::IssueWorkspace => "issue-workspace.md",
+            Self::NewWorkspace => "new-workspace.md",
             Self::NoWorkspace => "no-workspace.md",
             Self::Queue => "queue.md",
         }
