@@ -107,6 +107,8 @@
           {#if todo.link}
             {@const link = todo.link}
             <button type="button" class="visit" onclick={() => openUrl(link)} aria-label={t("todo.openLink", { title: todo.title })} title={link}>↗</button>
+          {:else}
+            <span class="visit" aria-hidden="true"></span>
           {/if}
         </li>
       {/if}
