@@ -6,10 +6,16 @@ export const STAGES: readonly Stage[] = ["up_next", "in_progress", "in_review", 
 export const isInFlight = (item: WorkItem): boolean =>
   item.stage !== "up_next" && item.stage !== "done";
 
-/** In flight, grouped by whose turn it is. */
-export const TURNS: readonly { id: Turn; label: CopyKey }[] = [
-  { id: "you", label: "inflight.you" },
-  { id: "agent", label: "inflight.agent" },
-  { id: "others", label: "inflight.others" },
-  { id: "later", label: "inflight.later" },
+/** Priorities can show everything in play, or only the work that is one side's turn. */
+export type TurnFilter = "all" | Turn;
+
+export const TURN_FILTERS: readonly { id: TurnFilter; label: CopyKey }[] = [
+  { id: "all", label: "priorities.filter.all" },
+  { id: "you", label: "priorities.filter.you" },
+  { id: "agent", label: "priorities.filter.agent" },
+  { id: "others", label: "priorities.filter.others" },
+  { id: "later", label: "priorities.filter.later" },
 ];
+
+export const matchesTurn = (item: WorkItem, filter: TurnFilter): boolean =>
+  filter === "all" || (isInFlight(item) && item.turn === filter);
