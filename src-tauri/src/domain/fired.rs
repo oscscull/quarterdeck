@@ -142,6 +142,16 @@ pub const KINDS: &[Kind] = &[
         PR,
     ),
     kind(
+        "github.pr_behind",
+        "One of the user's PRs fell behind the branch it merges into, which must be up to date to merge.",
+        PR,
+    ),
+    kind(
+        "github.pr_conflicts",
+        "One of the user's PRs started conflicting with the branch it merges into.",
+        PR,
+    ),
+    kind(
         "item.created",
         "A work item was created. Subject: the item.",
         &["item"],

@@ -1,82 +1,64 @@
 <script lang="ts">
-  import { api, errorText } from "../lib/api";
-  import { chatContext } from "../lib/chat.svelte";
+  import { chat, clearChat, sendChat } from "../lib/chat.svelte";
   import { t } from "../lib/copy";
-  import { changed } from "../lib/refresh.svelte";
+  import { autogrow, enterSends } from "../lib/enter";
 
   interface Props {
     page: string;
     suggestions: string[];
   }
 
-  interface Message {
-    from: "you" | "claude";
-    text: string;
-  }
-
   let { page, suggestions }: Props = $props();
 
-  // Lives only while the bubble is mounted: nothing here is stored.
-  let open = $state(false);
-  let draft = $state("");
-  let busy = $state(false);
-  let error = $state("");
-  let messages = $state<Message[]>([]);
-
-  async function send(): Promise<void> {
-    const text = draft.trim();
-    if (!text || busy) return;
-    messages.push({ from: "you", text });
-    draft = "";
-    busy = true;
-    error = "";
-    try {
-      messages.push({ from: "claude", text: await api.askClaude(page, chatContext.text, text) });
-      // Claude may have changed things through the Quarterdeck tools.
-      changed();
-    } catch (e) {
-      error = t("chat.failed", { error: errorText(e) });
-    } finally {
-      busy = false;
-    }
-  }
+  const send = (): void => void sendChat(page);
 </script>
 
 <div class="dock">
-  {#if open}
+  {#if chat.open}
     <section aria-label={t("chat.title")}>
       <div class="head">
         <h2>{t("chat.title")}</h2>
-        <button type="button" class="close" aria-label={t("chat.close")} onclick={() => (open = false)}>×</button>
+        <div class="tools">
+          {#if chat.messages.length > 0}
+            <button type="button" class="clear" onclick={clearChat}>{t("chat.clear")}</button>
+          {/if}
+          <button type="button" class="close" aria-label={t("chat.close")} onclick={() => (chat.open = false)}>×</button>
+        </div>
       </div>
       <p class="hint context">{t("chat.looking", { page })}</p>
-      {#if messages.length === 0}
+      {#if chat.messages.length === 0}
         <div class="suggestions">
           {#each suggestions as text (text)}
-            <button type="button" onclick={() => (draft = text)}>{text}</button>
+            <button type="button" onclick={() => (chat.draft = text)}>{text}</button>
           {/each}
         </div>
       {:else}
         <ol class="messages">
-          {#each messages as message, i (i)}
+          {#each chat.messages as message, i (i)}
             <li class={message.from}>{message.text}</li>
           {/each}
         </ol>
       {/if}
-      {#if busy}<p class="hint context">{t("chat.thinking")}</p>{/if}
-      {#if error}<p class="error context">{error}</p>{/if}
-      <form onsubmit={(e) => { e.preventDefault(); void send(); }}>
+      {#if chat.busy}<p class="hint context">{t("chat.thinking")}</p>{/if}
+      {#if chat.error}<p class="error context">{chat.error}</p>{/if}
+      <form onsubmit={(e) => { e.preventDefault(); send(); }}>
         <label class="grow">
           <span class="sr-only">{t("chat.placeholder")}</span>
-          <input bind:value={draft} placeholder={t("chat.placeholder")} />
+          <textarea
+            rows="1"
+            bind:value={chat.draft}
+            use:autogrow={chat.draft}
+            onkeydown={(e) => enterSends(e, send)}
+            placeholder={t("chat.placeholder")}
+          ></textarea>
         </label>
-        <button type="submit" class="send" aria-label={t("chat.send")} disabled={busy}>
+        <button type="submit" class="send" aria-label={t("chat.send")} disabled={chat.busy}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
         </button>
       </form>
     </section>
   {/if}
-  <button type="button" class="bubble" aria-label={t("chat.open")} onclick={() => (open = !open)}>
+  <button type="button" class="bubble" aria-label={t("chat.open")} onclick={() => (chat.open = !chat.open)}>
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
   </button>
 </div>
@@ -116,6 +98,20 @@
   h2 {
     font-size: 15px;
     font-weight: 600;
+  }
+
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .clear {
+    padding: 6px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
   }
 
   .close {
@@ -179,7 +175,7 @@
   form {
     display: flex;
     gap: 8px;
-    align-items: center;
+    align-items: flex-end;
     padding: 12px 12px 12px 16px;
     border-top: 1px solid var(--line-soft);
   }
@@ -189,12 +185,17 @@
     min-width: 0;
   }
 
-  input {
+  textarea {
+    display: block;
     width: 100%;
-    padding: 10px 0;
+    max-height: 140px;
+    padding: 8px 0;
     border: 0;
     outline: none;
     background: transparent;
+    font: inherit;
+    line-height: 1.45;
+    resize: none;
   }
 
   .send,

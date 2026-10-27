@@ -10,6 +10,7 @@ pub mod link;
 mod linked;
 mod snapshot;
 mod turn;
+mod update;
 
 use std::collections::HashSet;
 
@@ -28,12 +29,15 @@ use crate::store::{Db, fired, items};
 
 pub use adopt::{OpenedPr, adopt};
 pub use apply::SOURCE;
+pub use update::update_branch;
 
 fn describe(kind: EventKind, ext: &str, url: &str) -> String {
     let what = match kind {
         EventKind::PrNewComments => "new review comments",
         EventKind::CiFailed => "CI failing",
         EventKind::CiPassed => "CI passed",
+        EventKind::PrBehind => "behind its base branch",
+        EventKind::PrConflicts => "conflicts with its base branch",
     };
     format!("{what} on {ext} ({url})")
 }
@@ -185,6 +189,7 @@ mod tests {
             reviewers: fetch::Reviewers::Requested,
             reviewer_names: Vec::new(),
             closes: Vec::new(),
+            base: fetch::Base::Current,
         }
     }
 

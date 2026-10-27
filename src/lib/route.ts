@@ -15,11 +15,11 @@ export const route = {
     node ? peer(node, "tell_claude", { item_id: itemId, text }) : api.respond({ kind: "tell", itemId, text }),
   setTodoDone: (node: string | undefined, id: number, done: boolean) =>
     node ? peer(node, "complete_todo", { id, done }) : api.setTodoDone(id, done),
-  addTodo: (node: string | undefined, title: string, area: string, due: string | null) =>
-    node ? peer(node, "add_todo", { title, area, due }) : api.addTodo(title, area, due),
+  addTodo: (node: string | undefined, title: string, area: string, due: string | null, link: string | null) =>
+    node ? peer(node, "add_todo", { title, area, due, link }) : api.addTodo(title, area, due, link),
   updateTodo: (node: string | undefined, todo: TodoEdit) =>
     node
-      ? peer(node, "update_todo", { ...todo, due: todo.due ?? undefined, clear_due: todo.due === null })
+      ? peer(node, "update_todo", { ...todo, due: todo.due ?? undefined, clear_due: todo.due === null, link: todo.link ?? "" })
       : api.updateTodo(todo),
   deleteTodo: (node: string | undefined, id: number) =>
     node ? peer(node, "delete_todo", { id }) : api.deleteTodo(id),

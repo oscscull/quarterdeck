@@ -46,6 +46,13 @@ pub async fn dispatch(handle: &AppHandle, settings: &Settings) -> AppResult<()> 
             // A failed hand-off mustn't stop the other events; the item still shows CI's state.
             drop(super::ci::react(handle, settings, &event, !matching.is_empty()).await);
         }
+        if !paused
+            && super::branch::is_branch(&event)
+            && settings.node_for(&event.area) == settings.node
+        {
+            // Likewise: the item still shows the branch's state.
+            drop(super::branch::react(handle, settings, &event, !matching.is_empty()).await);
+        }
     }
     Ok(())
 }

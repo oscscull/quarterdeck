@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
+
   import AreaDot from "../../components/AreaDot.svelte";
   import { errorText } from "../../lib/api";
   import { ownerOf } from "../../lib/peers.svelte";
@@ -38,6 +40,7 @@
     title: "",
     area: areas.current !== ALL ? areas.current : (areas.list[0]?.id ?? ""),
     due: "",
+    link: "",
   });
 
   async function run(work: () => Promise<unknown>): Promise<void> {
@@ -53,10 +56,10 @@
   }
 
   const add = (f: TodoFields): Promise<void> =>
-    run(() => route.addTodo(ownerOf(f.area), f.title, f.area, f.due || null));
+    run(() => route.addTodo(ownerOf(f.area), f.title, f.area, f.due || null, f.link.trim() || null));
 
   const save = (todo: Todo, f: TodoFields): Promise<void> =>
-    run(() => route.updateTodo(todo.node, { id: todo.id, title: f.title, area: f.area, due: f.due || null }));
+    run(() => route.updateTodo(todo.node, { id: todo.id, title: f.title, area: f.area, due: f.due || null, link: f.link.trim() || null }));
 
   const toggle = (todo: Todo): Promise<void> => run(() => route.setTodoDone(todo.node, todo.id, todo.doneAt === null));
 
@@ -80,7 +83,7 @@
       {#if editing === keyOf(todo)}
         <li>
           <TodoForm
-            start={{ title: todo.title, area: todo.area, due: todo.due ?? "" }}
+            start={{ title: todo.title, area: todo.area, due: todo.due ?? "", link: todo.link ?? "" }}
             saveLabel={t("todo.update")}
             onSave={(f) => save(todo, f)}
             onCancel={() => (editing = null)}
@@ -101,6 +104,10 @@
             <AreaDot area={todo.area} />
             <span class="due" class:late={late(todo)}>{todo.due ? dueText(todo.due, now) : ""}</span>
           </button>
+          {#if todo.link}
+            {@const link = todo.link}
+            <button type="button" class="visit" onclick={() => openUrl(link)} aria-label={t("todo.openLink", { title: todo.title })} title={link}>↗</button>
+          {/if}
         </li>
       {/if}
     {:else}
@@ -181,6 +188,22 @@
     text-decoration: underline;
     text-decoration-color: var(--line);
     text-underline-offset: 3px;
+  }
+
+  .visit {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 15px;
+  }
+
+  .visit:hover {
+    background: var(--surface-soft);
   }
 
   .done {

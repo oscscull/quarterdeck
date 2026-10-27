@@ -13,6 +13,9 @@ pub enum SettingKey {
     /// How many priorities Today shows (number).
     #[serde(rename = "priority_limit")]
     PriorityLimit,
+    /// How many earlier "Ask Claude" messages go with each new one (number).
+    #[serde(rename = "chat_history_messages")]
+    ChatHistoryMessages,
     /// Hours a PR waits on reviewers before Today suggests a nudge (number).
     #[serde(rename = "nudge_after_hours")]
     NudgeAfterHours,
@@ -55,6 +58,12 @@ pub enum SettingKey {
     /// Claude Code tools a CI fix may use, e.g. "Bash(gh pr checks:*)" (list of text).
     #[serde(rename = "github.fix_ci_tools")]
     GithubFixCiTools,
+    /// Update a PR's branch when it falls behind a base it must be up to date with (true/false).
+    #[serde(rename = "github.update_behind")]
+    GithubUpdateBehind,
+    /// Hand PRs that start conflicting with their base to Claude (true/false).
+    #[serde(rename = "github.fix_conflicts")]
+    GithubFixConflicts,
     /// Issues with any of these labels never become items (list of text).
     #[serde(rename = "github.issues.skip_labels")]
     GithubIssueSkipLabels,
@@ -92,6 +101,7 @@ impl SettingKey {
     pub fn path(self) -> Vec<&'static str> {
         let name = match self {
             Self::PriorityLimit => "priority_limit",
+            Self::ChatHistoryMessages => "chat_history_messages",
             Self::NudgeAfterHours => "nudge_after_hours",
             Self::ActivityTtlDays => "activity_ttl_days",
             Self::RunTtlDays => "run_ttl_days",
@@ -106,6 +116,8 @@ impl SettingKey {
             Self::GithubDefaultArea => "github.default_area",
             Self::GithubFixCi => "github.fix_ci",
             Self::GithubFixCiTools => "github.fix_ci_tools",
+            Self::GithubUpdateBehind => "github.update_behind",
+            Self::GithubFixConflicts => "github.fix_conflicts",
             Self::GithubIssueSkipLabels => "github.issues.skip_labels",
             Self::CalendarPollMinutes => "calendar.poll_minutes",
             Self::CalendarDaysAhead => "calendar.days_ahead",

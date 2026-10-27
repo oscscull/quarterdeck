@@ -1,25 +1,33 @@
 use tauri::State;
 
 use crate::app::App;
+use crate::claude::transcript::{self, ChatLine};
 use crate::claude::{self, draft};
 use crate::config::prompts::{Prompt, render};
 use crate::config::schedules;
 use crate::error::AppResult;
 use crate::peers;
 
-/// Answers a question from the "Ask Claude" bubble. The reply is not stored.
-#[tauri::command]
-pub async fn ask_claude(
-    app: State<'_, App>,
+/// A message from the "Ask Claude" bubble, with the view it was sent from and the chat so far.
+#[derive(Debug, serde::Deserialize)]
+pub struct ChatRequest {
     page: String,
     context: String,
+    history: Vec<ChatLine>,
     message: String,
-) -> AppResult<String> {
+}
+
+/// Answers a message in the "Ask Claude" bubble. Nothing is stored: the window keeps the chat
+/// until the app restarts.
+#[tauri::command]
+pub async fn ask_claude(app: State<'_, App>, request: ChatRequest) -> AppResult<String> {
     let settings = app.settings()?;
+    let history = transcript::render(&request.history, settings.chat_history_messages);
     let vars = [
-        ("page", page.as_str()),
-        ("context", context.as_str()),
-        ("message", message.as_str()),
+        ("page", request.page.as_str()),
+        ("context", request.context.as_str()),
+        ("history", history.as_str()),
+        ("message", request.message.as_str()),
     ];
     let prompt = render(&app.config, Prompt::Chat, &vars)?;
     claude::ask(settings.claude()?, &prompt).await

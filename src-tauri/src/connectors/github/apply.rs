@@ -160,6 +160,7 @@ mod tests {
             reviewers: super::super::fetch::Reviewers::Requested,
             reviewer_names: Vec::new(),
             closes: Vec::new(),
+            base: super::super::fetch::Base::Current,
             checks: Vec::new(),
             notes: Vec::new(),
         }

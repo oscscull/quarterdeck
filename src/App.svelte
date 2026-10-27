@@ -46,9 +46,7 @@
   <Agent />
 {/if}
 
-{#key view}
-  <ChatBubble page={t(viewLabel(view))} suggestions={suggestionKeys(view).map((key) => t(key))} />
-{/key}
+<ChatBubble page={t(viewLabel(view))} suggestions={suggestionKeys(view).map((key) => t(key))} />
 
 {#if detail.id}
   <ItemDetailModal id={detail.id} node={detail.node} onClose={() => (detail.id = null)} />

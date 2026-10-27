@@ -2,23 +2,27 @@ use chrono::{NaiveDate, Utc};
 use tauri::State;
 
 use crate::app::App;
-use crate::domain::todo::Todo;
+use crate::domain::todo::{Todo, link_or_none};
 use crate::error::AppResult;
 use crate::store::todos;
 
-#[tauri::command]
-pub async fn add_todo(
-    app: State<'_, App>,
+/// What the add form sends.
+#[derive(Debug, serde::Deserialize)]
+pub struct NewTodo {
     title: String,
     area: String,
     due: Option<NaiveDate>,
-) -> AppResult<()> {
-    let area = app.settings()?.known_area(&area);
+    link: Option<String>,
+}
+
+#[tauri::command]
+pub async fn add_todo(app: State<'_, App>, todo: NewTodo) -> AppResult<()> {
     let todo = Todo {
         id: 0,
-        title,
-        area,
-        due,
+        title: todo.title,
+        area: app.settings()?.known_area(&todo.area),
+        due: todo.due,
+        link: link_or_none(todo.link),
         done_at: None,
     };
     todos::insert(&app.db, &todo).await
@@ -38,6 +42,7 @@ pub struct TodoEdit {
     title: String,
     area: String,
     due: Option<NaiveDate>,
+    link: Option<String>,
 }
 
 #[tauri::command]
@@ -48,6 +53,7 @@ pub async fn update_todo(app: State<'_, App>, todo: TodoEdit) -> AppResult<()> {
         title: todo.title,
         area,
         due: todo.due,
+        link: link_or_none(todo.link),
         ..old
     };
     todos::update(&app.db, &new).await

@@ -61,7 +61,7 @@ pub async fn react(
 }
 
 /// `extra` adds `result` and `workspace` to the item's own fields.
-fn prompt_for(
+pub(super) fn prompt_for(
     app: &App,
     prompt: Prompt,
     item: &WorkItem,

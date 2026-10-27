@@ -11,6 +11,8 @@ pub enum EventKind {
     CiFailed,
     CiPassed,
     PrNewComments,
+    PrBehind,
+    PrConflicts,
 }
 
 impl EventKind {
@@ -20,6 +22,8 @@ impl EventKind {
             Self::CiFailed => "github.ci_failed",
             Self::CiPassed => "github.ci_passed",
             Self::PrNewComments => "github.pr_new_comments",
+            Self::PrBehind => "github.pr_behind",
+            Self::PrConflicts => "github.pr_conflicts",
         }
     }
 }
