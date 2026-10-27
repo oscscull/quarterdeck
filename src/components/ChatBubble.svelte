@@ -15,14 +15,25 @@
 
 <div class="dock">
   {#if chat.open}
-    <section aria-label={t("chat.title")}>
+    <section class:big={chat.big} aria-label={t("chat.title")}>
       <div class="head">
         <h2>{t("chat.title")}</h2>
         <div class="tools">
           {#if chat.messages.length > 0}
             <button type="button" class="clear" onclick={clearChat}>{t("chat.clear")}</button>
           {/if}
-          <button type="button" class="close" aria-label={t("chat.close")} onclick={() => (chat.open = false)}>×</button>
+          <button
+            type="button"
+            class="icon"
+            aria-label={t(chat.big ? "chat.smaller" : "chat.bigger")}
+            title={t(chat.big ? "chat.smaller" : "chat.bigger")}
+            onclick={() => (chat.big = !chat.big)}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              {#if chat.big}<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path>{:else}<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>{/if}
+            </svg>
+          </button>
+          <button type="button" class="icon close" aria-label={t("chat.close")} onclick={() => (chat.open = false)}>×</button>
         </div>
       </div>
       <p class="hint context">{t("chat.looking", { page })}</p>
@@ -88,6 +99,10 @@
     overflow: hidden;
   }
 
+  section.big {
+    width: 720px;
+  }
+
   .head {
     display: flex;
     justify-content: space-between;
@@ -114,7 +129,10 @@
     font-size: 13px;
   }
 
-  .close {
+  .icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 32px;
     height: 32px;
     border: 0;
@@ -122,6 +140,10 @@
     background: transparent;
     color: var(--muted);
     font-size: 18px;
+  }
+
+  .icon:hover {
+    background: var(--surface-soft);
   }
 
   .context {
@@ -147,6 +169,7 @@
 
   .messages {
     max-height: 320px;
+    overflow-x: hidden;
     overflow-y: auto;
     padding: 0 16px 12px;
     display: flex;
@@ -154,7 +177,13 @@
     gap: 8px;
   }
 
+  .big .messages {
+    max-height: calc(100vh - 280px);
+  }
+
   .messages li {
+    max-width: 85%;
+    overflow-wrap: anywhere;
     padding: 8px 12px;
     border-radius: 12px;
     line-height: 1.45;
@@ -195,7 +224,12 @@
     background: transparent;
     font: inherit;
     line-height: 1.45;
+    overflow-wrap: anywhere;
     resize: none;
+  }
+
+  .big textarea {
+    max-height: 280px;
   }
 
   .send,

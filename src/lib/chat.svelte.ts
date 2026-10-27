@@ -12,6 +12,8 @@ export const chatContext = $state({ text: "" });
  */
 export const chat = $state({
   open: false,
+  /** The larger panel, for long answers. */
+  big: false,
   draft: "",
   busy: false,
   error: "",

@@ -142,6 +142,8 @@
   "chat.title": "Ask Claude",
   "chat.close": "Close",
   "chat.clear": "Clear",
+  "chat.bigger": "Make bigger",
+  "chat.smaller": "Make smaller",
   "chat.looking": "Looking at {page}. I can make changes too.",
   "chat.placeholder": "Ask about this page",
   "chat.send": "Send",
