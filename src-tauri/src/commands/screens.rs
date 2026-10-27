@@ -17,7 +17,7 @@ pub async fn today(app: State<'_, App>) -> AppResult<TodayView> {
     today::build(&app.db, settings.priority_limit, Utc::now()).await
 }
 
-/// All work items in priority order. Board, In flight and Priorities share this.
+/// All work items in priority order. Board and Priorities share this.
 #[tauri::command]
 pub async fn work_items(app: State<'_, App>) -> AppResult<Vec<WorkItem>> {
     items::list(&app.db).await

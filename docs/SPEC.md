@@ -41,9 +41,10 @@ The window title shows the running version, so it's clear when an update has lan
   turn on it needs; the first `priority_limit` show), one line for GitHub issues nobody has picked up yet
   (opens to the list), To do (things only the user can do, each with an optional link), and "From
   Claude".
-- **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today.
-- **Board**: items by stage, with parked items in a list of their own below. **In flight**: open
-  items by whose turn it is.
+- **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today. Each row
+  shows its stage, whose turn it is, its state and (once started) how long it has been open; a filter
+  narrows the list to one side's turn, and ranking still works within it.
+- **Board**: items by stage, with parked items in a list of their own below.
 - **An item** opens with what's needed from the user when it's their turn (the need, or the
   questions asked), the reply box, then its state, links and (collapsed) history.
 - **Agent**: every item that is the agent's turn, and what's running (each run's latest step, live; click for its steps so far), every schedule (toggle, edit, delete, run now, create by describing

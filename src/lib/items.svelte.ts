@@ -2,7 +2,7 @@ import { api, errorText } from "./api";
 import { fromPeers, tag } from "./peers.svelte";
 import type { WorkItem } from "./types";
 
-/** Work items in priority order from every machine, shared by Priorities, Board and In flight. */
+/** Work items in priority order from every machine, shared by Priorities and Board. */
 export function workItems() {
   const state = $state({ items: [] as WorkItem[], error: "", now: new Date() });
 
