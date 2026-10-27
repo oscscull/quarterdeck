@@ -149,6 +149,8 @@ export interface Todo {
   area: string;
   /** A calendar date, "YYYY-MM-DD". */
   due: string | null;
+  /** A page it's about, e.g. a booking form. */
+  link: string | null;
   doneAt: string | null;
 }
 
@@ -345,6 +347,7 @@ export interface TodoEdit {
   title: string;
   area: string;
   due: string | null;
+  link: string | null;
 }
 
 /** What the user does about something that needs them. */
@@ -355,3 +358,11 @@ export type Response =
 
 /** What came of a reply: "gone" when the question was already answered or dismissed. */
 export type ReplyOutcome = "done" | "gone";
+
+/** One message in the "Ask Claude" chat. */
+export interface ChatMessage {
+  from: "you" | "claude";
+  /** The view it was sent from, so Claude knows when the user moved on. */
+  page: string;
+  text: string;
+}

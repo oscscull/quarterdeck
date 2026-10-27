@@ -32,6 +32,8 @@ pub struct Area {
 pub struct Settings {
     pub node: String,
     pub priority_limit: usize,
+    /// How many earlier chat messages go to Claude with each new one.
+    pub chat_history_messages: usize,
     pub claude_command: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
@@ -61,6 +63,7 @@ impl Default for Settings {
         Self {
             node: "this-mac".to_owned(),
             priority_limit: 3,
+            chat_history_messages: 20,
             claude_command: "claude".to_owned(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
@@ -143,6 +146,7 @@ mod tests {
         Settings {
             node: "this-mac".to_owned(),
             priority_limit: 3,
+            chat_history_messages: 20,
             claude_command: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,

@@ -2,6 +2,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { errorText } from "../lib/api";
   import { t } from "../lib/copy";
+  import { autogrow, enterSends } from "../lib/enter";
   import { changed } from "../lib/refresh.svelte";
   import { route } from "../lib/route";
 
@@ -40,7 +41,15 @@
   {#if link}
     <button type="button" class="button-primary" onclick={() => link && openUrl(link)}>{t(isPr ? "tell.openPr" : "tell.openLink")}</button>
   {/if}
-  <input class="input" bind:value={text} placeholder={t("tell.placeholder")} aria-label={t("tell.label")} />
+  <textarea
+    class="input"
+    rows="1"
+    bind:value={text}
+    use:autogrow={text}
+    onkeydown={(e) => enterSends(e, () => void send())}
+    placeholder={t("tell.placeholder")}
+    aria-label={t("tell.label")}
+  ></textarea>
   {#if text.trim()}
     <button type="submit" class="button-primary" disabled={sending}>{t("ask.send")}</button>
   {/if}
@@ -50,13 +59,17 @@
 <style>
   form {
     display: flex;
+    align-items: flex-end;
     gap: 8px;
   }
 
   .input {
     flex: 1 1 0;
     min-width: 0;
+    max-height: 160px;
     font-size: 14px;
+    line-height: 1.45;
+    resize: none;
   }
 
   .note {

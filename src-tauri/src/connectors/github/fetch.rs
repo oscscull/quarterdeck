@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 
 const QUERY: &str = "query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { \
     ... on PullRequest { number title url isDraft repository { nameWithOwner } reviewDecision \
+    mergeable mergeStateStatus \
     author { login } \
     closingIssuesReferences(first: 20) { nodes { number repository { nameWithOwner } } } \
     reviewRequests(first: 20) { nodes { requestedReviewer { \
@@ -44,6 +45,32 @@ pub struct Pr {
     pub reviewer_names: Vec<String>,
     /// Issues it closes when merged, as `owner/repo#12`.
     pub closes: Vec<String>,
+    pub base: Base,
+}
+
+/// How the PR's branch stands against the branch it merges into.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Base {
+    /// Up to date, or GitHub doesn't require it to be.
+    #[default]
+    Current,
+    /// Behind, and the repo only merges branches that are up to date.
+    Behind,
+    /// It can't merge cleanly.
+    Conflicts,
+}
+
+impl Base {
+    /// From GitHub's `mergeable` and `mergeStateStatus`. GitHub reports `BEHIND` only where branch
+    /// protection requires branches to be up to date.
+    fn of(mergeable: Option<&str>, state: Option<&str>) -> Self {
+        match (mergeable, state) {
+            (Some("CONFLICTING"), _) | (_, Some("DIRTY")) => Self::Conflicts,
+            (_, Some("BEHIND")) => Self::Behind,
+            _ => Self::Current,
+        }
+    }
 }
 
 /// Who is expected to review a PR.
@@ -107,6 +134,8 @@ struct Node {
     is_draft: bool,
     repository: Option<Repo>,
     review_decision: Option<String>,
+    mergeable: Option<String>,
+    merge_state_status: Option<String>,
     author: Option<Login>,
     closing_issues_references: Nodes<IssueRef>,
     review_requests: Nodes<Request>,
@@ -298,6 +327,10 @@ impl Node {
             .map(|t| t.comments.total_count)
             .sum();
         let (ci, checks) = ci_of(self.commits);
+        let base = Base::of(
+            self.mergeable.as_deref(),
+            self.merge_state_status.as_deref(),
+        );
         let closes = self
             .closing_issues_references
             .nodes
@@ -322,6 +355,24 @@ impl Node {
             },
             reviewer_names,
             closes,
+            base,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_reads_github_merge_state() {
+        assert_eq!(
+            Base::of(Some("CONFLICTING"), Some("BLOCKED")),
+            Base::Conflicts
+        );
+        assert_eq!(Base::of(Some("UNKNOWN"), Some("DIRTY")), Base::Conflicts);
+        assert_eq!(Base::of(Some("MERGEABLE"), Some("BEHIND")), Base::Behind);
+        assert_eq!(Base::of(Some("MERGEABLE"), Some("BLOCKED")), Base::Current);
+        assert_eq!(Base::of(None, None), Base::Current);
     }
 }

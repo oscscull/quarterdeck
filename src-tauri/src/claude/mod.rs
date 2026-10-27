@@ -6,6 +6,7 @@ mod follow;
 pub mod reach;
 pub mod runner;
 mod stream;
+pub mod transcript;
 
 use tokio::process::Command;
 

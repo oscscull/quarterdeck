@@ -2,6 +2,7 @@
 
 mod agent_prompt;
 mod answers;
+mod branch;
 mod ci;
 mod connectors;
 mod dispatch;

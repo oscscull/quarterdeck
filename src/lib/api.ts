@@ -20,6 +20,7 @@ import type {
   TodayView,
   WorkItem,
   ReplyOutcome,
+  ChatMessage,
 } from "./types";
 
 /** Typed wrappers around the backend's Tauri commands. */
@@ -40,8 +41,8 @@ export const api = {
   alertDone: (id: number) => invoke<undefined>("alert_done", { id }),
   alertSnooze: (id: number) => invoke<undefined>("alert_snooze", { id }),
   areas: () => invoke<Area[]>("areas"),
-  addTodo: (title: string, area: string, due: string | null) =>
-    invoke<undefined>("add_todo", { title, area, due }),
+  addTodo: (title: string, area: string, due: string | null, link: string | null) =>
+    invoke<undefined>("add_todo", { todo: { title, area, due, link } }),
   setTodoDone: (id: number, done: boolean) => invoke<undefined>("set_todo_done", { id, done }),
   updateTodo: (todo: TodoEdit) => invoke<undefined>("update_todo", { todo }),
   deleteTodo: (id: number) => invoke<undefined>("delete_todo", { id }),
@@ -75,8 +76,8 @@ export const api = {
   dismissAllUrgent: () => invoke<undefined>("dismiss_all_urgent"),
   retryUrgent: (id: number) => invoke<undefined>("retry_urgent", { id }),
   resolveUrgent: (id: number, message: string) => invoke<string>("resolve_urgent", { id, message }),
-  askClaude: (page: string, context: string, message: string) =>
-    invoke<string>("ask_claude", { page, context, message }),
+  askClaude: (page: string, context: string, history: ChatMessage[], message: string) =>
+    invoke<string>("ask_claude", { request: { page, context, history, message } }),
   draftSchedule: (request: string) => invoke<string>("draft_schedule", { request }),
 };
 

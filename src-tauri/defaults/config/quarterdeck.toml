@@ -10,6 +10,10 @@ launch_at_login = true
 # How many asks Today's Priorities section shows, taken from the top of the ranking.
 priority_limit = 3
 
+# How many earlier messages in the "Ask Claude" chat go to Claude with each new one. The chat
+# itself lasts until the app restarts.
+chat_history_messages = 20
+
 
 # How Claude may act in a project's worktree: "auto" lets Claude judge what's safe, as in your own
 # sessions; "acceptEdits" allows edits but only the commands the project's allow rules list.
@@ -65,6 +69,12 @@ self_review = []
 # is on, and no ci_failed schedule covers it, Quarterdeck hands it to Claude (prompts/fix-ci.md).
 fix_ci = true
 fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)", "Bash(gh run rerun:*)"]
+# Where a repo only merges branches that are up to date, a PR that falls behind (say, while it waits
+# on review) has its branch updated by Quarterdeck (`gh pr update-branch`, no Claude). A PR that
+# starts conflicting goes to the Claude session on it, or, if nobody is on it, to a new one
+# (prompts/fix-conflicts.md). A pr_behind or pr_conflicts schedule takes over from either.
+update_behind = true
+fix_conflicts = true
 
 # Where repos are checked out on this machine. Work Quarterdeck starts on their PRs (fixing CI, acting
 # on your answers), or on items linking their issues, runs there, in a worktree per item, with the

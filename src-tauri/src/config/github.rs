@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use super::branches::BranchSettings;
 use super::issues::IssueSettings;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,6 +27,9 @@ pub struct GithubSettings {
     pub fix_ci: bool,
     /// Claude Code tools that run may use, besides the Quarterdeck tools.
     pub fix_ci_tools: Vec<String>,
+    /// Updating PRs that fall behind, and fixing ones that conflict.
+    #[serde(flatten)]
+    pub branches: BranchSettings,
     /// Owner or repo to the names of checks that only inform (e.g. a visual-diff report). Their
     /// failures don't count as CI failing; they're noted on the item instead.
     pub informational_checks: BTreeMap<String, Vec<String>>,
@@ -44,6 +48,7 @@ impl Default for GithubSettings {
             self_review: Vec::new(),
             fix_ci: true,
             fix_ci_tools: Vec::new(),
+            branches: BranchSettings::default(),
             informational_checks: BTreeMap::new(),
             issues: IssueSettings::default(),
         }

@@ -5,7 +5,7 @@ use serde::Deserialize;
 use super::super::ctx::Ctx;
 use super::super::tool::{Tool, async_tool};
 use super::{date, in_area};
-use crate::domain::todo::Todo;
+use crate::domain::todo::{Todo, link_or_none};
 use crate::error::AppResult;
 use crate::store::todos;
 
@@ -60,6 +60,8 @@ struct AddArgs {
     area: String,
     /// YYYY-MM-DD
     due: Option<String>,
+    /// A page it's about, e.g. the booking form or the email to answer.
+    link: Option<String>,
 }
 
 async fn add(ctx: Ctx, args: AddArgs) -> AppResult<()> {
@@ -68,6 +70,7 @@ async fn add(ctx: Ctx, args: AddArgs) -> AppResult<()> {
         title: args.title,
         area: ctx.area(&args.area)?,
         due: args.due.as_deref().map(date).transpose()?,
+        link: link_or_none(args.link),
         done_at: None,
     };
     todos::insert(&ctx.db, &todo).await
@@ -83,6 +86,8 @@ struct UpdateArgs {
     /// Set true to remove the due date.
     #[serde(default)]
     clear_due: bool,
+    /// A page it's about. Pass "" to remove it.
+    link: Option<String>,
 }
 
 async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<()> {
@@ -96,6 +101,10 @@ async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<()> {
             None
         } else {
             due.or(old.due)
+        },
+        link: match args.link {
+            Some(l) => link_or_none(Some(l)),
+            None => old.link,
         },
         ..old
     };

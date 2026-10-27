@@ -39,7 +39,8 @@ The window title shows the running version, so it's clear when an update has lan
 
 - **Today**: next meeting, Priorities (in rank order: questions on an item, else what the user's
   turn on it needs; the first `priority_limit` show), one line for GitHub issues nobody has picked up yet
-  (opens to the list), To do (things only the user can do), and "From Claude".
+  (opens to the list), To do (things only the user can do, each with an optional link), and "From
+  Claude".
 - **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today.
 - **Board**: items by stage, with parked items in a list of their own below. **In flight**: open
   items by whose turn it is.
@@ -49,7 +50,9 @@ The window title shows the running version, so it's clear when an update has lan
   it), missed or failed runs, Pause all, recent events and what they started, connector and peer
   status, and the MCP connect command.
 - **Ask Claude** bubble on every view, given that view's data and the Quarterdeck tools, settings
-  ones included, so any setting can be changed by asking.
+  ones included, so any setting can be changed by asking. One conversation runs across views until
+  the app restarts (never stored); each message carries the last `chat_history_messages` with the
+  view each was sent from. In it and in Tell Claude, Enter sends and Cmd/Ctrl/Shift+Enter adds a line.
 
 ## Item life
 
@@ -104,7 +107,12 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
   An open hand-made item whose link is a PR becomes that PR's item, replacing any the sync made.
   CI state is worked out per check: checks a repo marks informational (`informational_checks`, e.g.
   a visual-diff report) don't count, and their results are noted on the item instead.
-  PRs with no requested reviewers, or in `self_review` repos, wait on the user. An item is closed
+  PRs with no requested reviewers, or in `self_review` repos, wait on the user. Every sync also reads
+  each PR's merge state, so work waiting on review stays mergeable: one that falls behind a base it
+  must be up to date with fires `pr_behind` and Quarterdeck updates its branch (`gh pr update-branch`,
+  `update_behind`; on failure the turn goes to the user); one that starts conflicting fires
+  `pr_conflicts` and goes to Claude like a CI failure (`prompts/fix-conflicts.md`, `fix_conflicts`).
+  A schedule on either event takes over. An item is closed
   only when `gh` says its PR merged or closed, never because the open-PR search missed it. Syncs
   every `poll_minutes`, and at once when the window regains focus (at most every
   `focus_sync_seconds`), after which the screen reloads.

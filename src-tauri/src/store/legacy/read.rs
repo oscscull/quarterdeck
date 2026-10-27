@@ -220,6 +220,7 @@ fn todo(r: &Row<'_>) -> Sql<Todo> {
         title: r.get(0)?,
         area: r.get(1)?,
         due,
+        link: None,
         done_at: at_opt(r, 3)?,
     })
 }

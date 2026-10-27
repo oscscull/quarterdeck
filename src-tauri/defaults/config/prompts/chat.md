@@ -8,6 +8,10 @@ The user is looking at the {{page}} view. It currently shows:
 
 {{context}}
 
+The chat so far (the user may have moved between views since):
+
+{{history}}
+
 Reply briefly and plainly, in a sentence or two: what you did, or the answer.
 
 Their message:

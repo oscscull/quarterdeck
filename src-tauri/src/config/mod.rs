@@ -5,6 +5,7 @@ mod defaults;
 mod frontmatter;
 
 pub mod alerts;
+pub mod branches;
 pub mod calendar;
 pub mod dev;
 pub mod edit;
