@@ -15,7 +15,7 @@ macro_rules! default_file {
     };
 }
 
-const FILES: [(&str, &str); 17] = [
+const FILES: [(&str, &str); 18] = [
     default_file!("README.md"),
     default_file!("quarterdeck.toml"),
     default_file!("prompts/chat.md"),
@@ -31,6 +31,7 @@ const FILES: [(&str, &str); 17] = [
     default_file!("prompts/message.md"),
     default_file!("prompts/workspace.md"),
     default_file!("prompts/issue-workspace.md"),
+    default_file!("prompts/new-workspace.md"),
     default_file!("prompts/no-workspace.md"),
     default_file!("prompts/queue.md"),
 ];

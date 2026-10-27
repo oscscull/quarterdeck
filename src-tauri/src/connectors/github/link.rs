@@ -1,4 +1,4 @@
-//! Reads which issue or PR a GitHub link points at.
+//! Reads which repo, issue or PR a GitHub link points at.
 
 /// `owner/repo` and the number from `https://github.com/<owner>/<repo>/<section>/<n>`, where
 /// `section` is `issues` or `pull`, with any trailing `/`, `#…` or `?…` ignored.
@@ -17,9 +17,31 @@ pub fn parse(link: &str, section: &str) -> Option<(String, u64)> {
     Some((format!("{owner}/{repo}"), digits.parse().ok()?))
 }
 
+/// `owner/repo` from a link to the repo itself, `https://github.com/<owner>/<repo>`, with any
+/// trailing `/`, `.git`, `#…` or `?…` ignored. Links to a page inside the repo aren't the repo.
+pub fn repo(link: &str) -> Option<String> {
+    let path = link.trim().strip_prefix("https://github.com/")?;
+    let path = path.split(['?', '#']).next()?.trim_end_matches('/');
+    let (owner, repo) = path.split_once('/')?;
+    let repo = repo.strip_suffix(".git").unwrap_or(repo);
+    let named = |s: &str| !s.is_empty() && !s.contains('/');
+    (named(owner) && named(repo)).then(|| format!("{owner}/{repo}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_links_to_the_repo_itself() {
+        assert_eq!(
+            repo("https://github.com/me/app/").as_deref(),
+            Some("me/app")
+        );
+        assert_eq!(repo("https://github.com/me/app/pull/2"), None);
+        assert_eq!(repo("https://github.com/me"), None);
+        assert_eq!(repo("https://github.com/me/"), None);
+    }
 
     #[test]
     fn reads_the_repo_and_number_of_its_section() {

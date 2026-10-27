@@ -26,8 +26,8 @@ pub(super) async fn run(program: &str, dir: &Path, args: &[&str]) -> AppResult<S
 }
 
 /// The PR's head branch.
-pub(super) async fn pr_branch(ws: &Workspace) -> AppResult<String> {
-    let number = ws.number.to_string();
+pub(super) async fn pr_branch(ws: &Workspace, number: u64) -> AppResult<String> {
+    let number = number.to_string();
     let repo = ws.repo.as_str();
     let view = [
         "pr",
@@ -60,9 +60,10 @@ pub(super) async fn default_branch(ws: &Workspace) -> AppResult<String> {
 /// Makes the item's worktree, unless it exists.
 pub async fn prepare(ws: &Workspace) -> AppResult<()> {
     if !ws.dir.exists() {
-        match ws.kind {
-            Kind::Pr => prepare_pr(ws).await?,
-            Kind::Issue => prepare_issue(ws).await?,
+        match (ws.kind, ws.branch.as_deref()) {
+            (Kind::Pr(number), _) => prepare_pr(ws, number).await?,
+            (_, Some(branch)) => prepare_branch(ws, branch).await?,
+            (_, None) => return Err(AppError::Connector("no branch to work on".to_owned())),
         }
     }
     copy_local_settings(ws);
@@ -71,8 +72,8 @@ pub async fn prepare(ws: &Workspace) -> AppResult<()> {
 
 /// At the PR's latest commit. The head is detached so the branch can stay checked out in the
 /// user's own checkout; pushes go to `HEAD:<branch>`.
-async fn prepare_pr(ws: &Workspace) -> AppResult<()> {
-    let branch = pr_branch(ws).await?;
+async fn prepare_pr(ws: &Workspace, number: u64) -> AppResult<()> {
+    let branch = pr_branch(ws, number).await?;
     run("git", &ws.project, &["fetch", "origin", branch.as_str()]).await?;
     let dir = ws.dir.display().to_string();
     let start = format!("origin/{branch}");
@@ -80,18 +81,17 @@ async fn prepare_pr(ws: &Workspace) -> AppResult<()> {
     run("git", &ws.project, &add).await.map(drop)
 }
 
-/// On the issue's own branch: reused if an earlier worktree left it, otherwise new from the latest
+/// On the work's own branch: reused if an earlier worktree left it, otherwise new from the latest
 /// default branch, with no upstream so nothing pushes to the default branch by accident.
-async fn prepare_issue(ws: &Workspace) -> AppResult<()> {
+async fn prepare_branch(ws: &Workspace, branch: &str) -> AppResult<()> {
     let base = default_branch(ws).await?;
     run("git", &ws.project, &["fetch", "origin", base.as_str()]).await?;
     let dir = ws.dir.display().to_string();
-    let branch = ws.issue_branch();
     let local = format!("refs/heads/{branch}");
     let verify = ["rev-parse", "--verify", "--quiet", local.as_str()];
     let exists = run("git", &ws.project, &verify).await.is_ok();
     let start = format!("origin/{base}");
-    let (dir, branch, start) = (dir.as_str(), branch.as_str(), start.as_str());
+    let (dir, start) = (dir.as_str(), start.as_str());
     let add = if exists {
         vec!["worktree", "add", dir, branch]
     } else {

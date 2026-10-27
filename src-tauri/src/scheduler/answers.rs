@@ -1,5 +1,5 @@
-//! Takes the user's answers back to Claude. Work on a PR or issue in a known project happens in that
-//! project's worktree: the asking session is resumed if it ran there, otherwise a new session
+//! Takes the user's answers back to Claude. Work on a PR, issue or repo in a known project happens in
+//! that project's worktree: the asking session is resumed if it ran there, otherwise a new session
 //! starts there with the question and answer. Elsewhere the session that asked, or the one holding
 //! the item, is resumed. With nobody to tell, the user is told instead (see `undelivered`). An
 //! answer stays until a run reaches the agent with it, so one sent while the agent is down goes
@@ -84,15 +84,17 @@ async fn deliver_one(
 ) -> AppResult<bool> {
     let app = handle.state::<App>();
     let known = known_session(&app, answered, item).await?;
-    let ws = workspace::for_item(settings, item)?;
-    match thread::thread_for(known, ws.as_ref()) {
-        Some(thread) => start(handle, settings, (answered, item), (thread, ws))
+    let located = workspace::locate(settings, item)?;
+    let Some(thread) = thread::thread_for(known, located.as_ref().ok()) else {
+        let missing = located.err().map(|m| m.to_string()).unwrap_or_default();
+        let clock = Clock::now(&settings.turns);
+        return undelivered::report(&app.db, answered, &missing, clock)
             .await
-            .map(|()| true),
-        None => undelivered::report(&app.db, answered, Clock::now(&settings.turns))
-            .await
-            .map(|()| false),
-    }
+            .map(|()| false);
+    };
+    start(handle, settings, (answered, item), (thread, located.ok()))
+        .await
+        .map(|()| true)
 }
 
 /// Hands the answer to the agent.

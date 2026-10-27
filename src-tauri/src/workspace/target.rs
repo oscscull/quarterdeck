@@ -1,21 +1,25 @@
-//! What an item's work is on GitHub: a PR (from a GitHub item's id) or an issue (from its link).
+//! What an item's work is on GitHub: a PR (from a GitHub item's id), an issue, or new work in a repo
+//! (from its link).
 
+use super::Missing;
 use crate::connectors::github;
 use crate::domain::item::WorkItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     /// An open PR: the worktree sits at its head.
-    Pr,
+    Pr(u64),
     /// An issue to fix: the worktree is a new branch off the default branch.
-    Issue,
+    Issue(u64),
+    /// New work with no issue, e.g. from a Slack thread: a new branch named after the item, off the
+    /// default branch.
+    New,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     /// `owner/repo`.
     pub repo: String,
-    pub number: u64,
     pub kind: Kind,
 }
 
@@ -27,24 +31,40 @@ fn pr_of(item: &WorkItem) -> Option<Target> {
     let (repo, number) = item.external_id.as_deref()?.split_once('#')?;
     Some(Target {
         repo: repo.to_owned(),
-        number: number.parse().ok()?,
-        kind: Kind::Pr,
+        kind: Kind::Pr(number.parse().ok()?),
     })
 }
 
-/// The issue an item links to: `https://github.com/<owner>/<repo>/issues/<n>`.
-fn issue_of(item: &WorkItem) -> Option<Target> {
-    let (repo, number) = github::link::parse(item.link.as_deref()?, "issues")?;
+/// `https://github.com/<owner>/<repo>/issues/<n>`.
+fn issue_of(link: &str) -> Option<Target> {
+    let (repo, number) = github::link::parse(link, "issues")?;
     Some(Target {
         repo,
-        number,
-        kind: Kind::Issue,
+        kind: Kind::Issue(number),
     })
 }
 
-/// A PR item's PR, else the issue the item links to.
-pub fn of(item: &WorkItem) -> Option<Target> {
-    pr_of(item).or_else(|| issue_of(item))
+/// `https://github.com/<owner>/<repo>`.
+fn repo_of(link: &str) -> Option<Target> {
+    Some(Target {
+        repo: github::link::repo(link)?,
+        kind: Kind::New,
+    })
+}
+
+/// A PR item's PR, else the issue or repo the item links to.
+pub fn of(item: &WorkItem) -> Result<Target, Missing> {
+    if let Some(pr) = pr_of(item) {
+        return Ok(pr);
+    }
+    let link = item
+        .link
+        .as_deref()
+        .filter(|l| !l.trim().is_empty())
+        .ok_or(Missing::NoLink)?;
+    issue_of(link)
+        .or_else(|| repo_of(link))
+        .ok_or(Missing::NotRepo)
 }
 
 #[cfg(test)]
@@ -69,10 +89,9 @@ mod tests {
         }
     }
 
-    fn target(repo: &str, number: u64, kind: Kind) -> Target {
+    fn target(repo: &str, kind: Kind) -> Target {
         Target {
             repo: repo.to_owned(),
-            number,
             kind,
         }
     }
@@ -84,7 +103,7 @@ mod tests {
             Some("me/app#7"),
             Some("https://github.com/me/app/pull/7"),
         );
-        assert_eq!(of(&pr), Some(target("me/app", 7, Kind::Pr)));
+        assert_eq!(of(&pr), Ok(target("me/app", Kind::Pr(7))));
     }
 
     #[test]
@@ -98,23 +117,42 @@ mod tests {
             let issue = item("manual", None, Some(link));
             assert_eq!(
                 of(&issue),
-                Some(target("oscscull/baseddsl", 178, Kind::Issue)),
+                Ok(target("oscscull/baseddsl", Kind::Issue(178))),
                 "{link}"
             );
         }
     }
 
     #[test]
-    fn other_links_have_no_target() {
+    fn items_linking_a_repo_are_new_work_there() {
+        for link in [
+            "https://github.com/pol-inc/labbase-compass-webapp",
+            "https://github.com/pol-inc/labbase-compass-webapp/",
+            "https://github.com/pol-inc/labbase-compass-webapp.git",
+            " https://github.com/pol-inc/labbase-compass-webapp?tab=readme ",
+        ] {
+            let new = item("manual", None, Some(link));
+            assert_eq!(
+                of(&new),
+                Ok(target("pol-inc/labbase-compass-webapp", Kind::New)),
+                "{link}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_links_say_why_they_have_no_target() {
         for link in [
             "https://github.com/me/app/pull/7",
-            "https://github.com/me/app",
             "https://github.com/me/app/issues/",
+            "https://github.com/me",
             "https://example.com/me/app/issues/3",
             "https://linear.app/x/issue/AB-1",
         ] {
-            assert_eq!(of(&item("manual", None, Some(link))), None, "{link}");
+            let other = item("manual", None, Some(link));
+            assert_eq!(of(&other), Err(Missing::NotRepo), "{link}");
         }
-        assert_eq!(of(&item("manual", None, None)), None);
+        assert_eq!(of(&item("manual", None, None)), Err(Missing::NoLink));
+        assert_eq!(of(&item("manual", None, Some(" "))), Err(Missing::NoLink));
     }
 }

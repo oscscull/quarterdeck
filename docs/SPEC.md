@@ -218,7 +218,8 @@ and the agent's runs out to the user, so every turn ends with the user.
 - **The user's turn**: says what's needed (`pass_turn` requires `need`; system passes use their
   reason) and is reminded every `you_remind_hours`. Any reply (an answer, Tell Claude)
   passes the turn to the agent, unless another question on the item is open; one that no session
-  or worktree can take is raised as urgent and the turn comes back.
+  or worktree can take is raised as urgent (replacing the item's earlier one) and the turn comes
+  back with the cause: no link, a link that isn't a GitHub repo or issue, or a repo with no project.
 - **Others' turn**: after `others_hours` it goes to the item's `then`, else `others_then` (`you`
   by default; only `you` or `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved, draft or
   changes requested is the user's. GitHub never takes the turn from the agent.
@@ -239,15 +240,16 @@ that asked (or the one holding the item) with it (`prompts/answer.md`). Sessions
 their working directory, since Claude only resumes a session from the folder it ran in.
 
 Work Quarterdeck starts on a PR (fixing CI, acting on an answer) or on an item whose link is a
-GitHub issue runs in that repo's project when `[[projects]]` maps it to a checkout
+GitHub issue or repo runs in that repo's project when `[[projects]]` maps it to a checkout
 (`set_project`): in a git worktree per item under the data folder, in the permission mode
 `project_permission_mode` sets (default `auto`, as in the user's own sessions), with the
 project's `.claude/settings.local.json` copied in before every run. A PR's worktree is detached at its head; an
 issue's is a new branch `issue-<n>` off the latest default branch, and the first run there also
-gets the issue's text (`prompts/issue-workspace.md`). The user's checkout is untouched. Since a
+gets the issue's text (`prompts/issue-workspace.md`); a repo's is a new branch
+`quarterdeck/<item>` off it (`prompts/new-workspace.md`). The user's checkout is untouched. Since a
 project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes and no
-question on the item is open: it pushes commits the branch doesn't have and, for an issue, opens a
-PR closing it (titled from the first commit) and makes the item that PR's, in review, so syncs and
+question on the item is open: it pushes commits the branch doesn't have and, for an issue or repo,
+opens a PR (closing the issue, titled from the first commit) and makes the item that PR's, in review, so syncs and
 CI results follow it. A push that fails is raised as urgent and the turn goes to the user. Worktrees are
 removed once their item is done. Repos with no project get a run that can read CI but not change
 code.

@@ -54,9 +54,9 @@ mod tests {
         let ws = Workspace {
             project: "/code/app".into(),
             repo: "me/app".to_owned(),
-            number: 3,
-            kind: Kind::Issue,
+            kind: Kind::Issue(3),
             dir: "/wt/app-3".into(),
+            branch: Some("issue-3".to_owned()),
         };
         assert!(thread_for(None, None).is_none());
         assert!(matches!(

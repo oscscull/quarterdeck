@@ -96,8 +96,16 @@ fn first_line(text: &str) -> String {
 /// A new session on an issue starts with the issue's text, which Claude may not be able to fetch.
 async fn prompt_for(job: &Job) -> AppResult<String> {
     match (&job.workspace, &job.thread) {
-        (Some(ws), Thread::Start(_)) if ws.kind == Kind::Issue => {
-            let issue = workspace::issue_text(ws).await?;
+        (
+            Some(
+                ws @ Workspace {
+                    kind: Kind::Issue(number),
+                    ..
+                },
+            ),
+            Thread::Start(_),
+        ) => {
+            let issue = workspace::issue_text(ws, *number).await?;
             Ok(format!("{}\n\n---\n\n{issue}", job.prompt))
         }
         _ => Ok(job.prompt.clone()),

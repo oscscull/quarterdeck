@@ -1,5 +1,5 @@
 //! After Claude finishes in a worktree, Quarterdeck does the GitHub side, since a project's sandbox
-//! may keep Claude off the network: it pushes new commits and, for an issue, opens the PR.
+//! may keep Claude off the network: it pushes new commits and, for new work, opens the PR.
 
 use super::git::{default_branch, pr_branch, run};
 use super::{Kind, Workspace};
@@ -11,15 +11,21 @@ pub enum Published {
     Nothing,
     /// New commits pushed to the PR's branch.
     Pushed,
-    /// The issue's PR, opened now or found already open.
+    /// The new work's PR, opened now or found already open.
     Pr { number: u64, url: String },
 }
 
 pub async fn publish(ws: &Workspace) -> AppResult<Published> {
-    match ws.kind {
-        Kind::Pr => publish_pr(ws).await,
-        Kind::Issue => publish_issue(ws).await,
-    }
+    let closes = match ws.kind {
+        Kind::Pr(number) => return publish_pr(ws, number).await,
+        Kind::Issue(number) => Some(number),
+        Kind::New => None,
+    };
+    let branch = ws
+        .branch
+        .as_deref()
+        .ok_or_else(|| AppError::Connector("no branch to publish".to_owned()))?;
+    publish_branch(ws, branch, closes).await
 }
 
 /// Commits on HEAD that `base` doesn't have.
@@ -38,8 +44,8 @@ async fn push(ws: &Workspace, branch: &str) -> AppResult<()> {
         .map(drop)
 }
 
-async fn publish_pr(ws: &Workspace) -> AppResult<Published> {
-    let branch = pr_branch(ws).await?;
+async fn publish_pr(ws: &Workspace, number: u64) -> AppResult<Published> {
+    let branch = pr_branch(ws, number).await?;
     run("git", &ws.dir, &["fetch", "origin", branch.as_str()]).await?;
     if ahead_of(ws, &format!("origin/{branch}")).await? == 0 {
         return Ok(Published::Nothing);
@@ -48,22 +54,22 @@ async fn publish_pr(ws: &Workspace) -> AppResult<Published> {
     Ok(Published::Pushed)
 }
 
-async fn publish_issue(ws: &Workspace) -> AppResult<Published> {
+/// Pushes the branch and opens its PR, closing the issue if it fixes one.
+async fn publish_branch(ws: &Workspace, branch: &str, closes: Option<u64>) -> AppResult<Published> {
     let base = default_branch(ws).await?;
     run("git", &ws.dir, &["fetch", "origin", base.as_str()]).await?;
     let base_ref = format!("origin/{base}");
     if ahead_of(ws, &base_ref).await? == 0 {
         return Ok(Published::Nothing);
     }
-    let branch = ws.issue_branch();
-    push(ws, &branch).await?;
-    if let Some(open) = open_pr(ws, &branch).await? {
+    push(ws, branch).await?;
+    if let Some(open) = open_pr(ws, branch).await? {
         return Ok(open);
     }
     let (title, body) = first_commit(ws, &base_ref).await?;
-    let body = closing(&body, ws.number);
+    let body = closes.map_or_else(|| body.clone(), |n| closing(&body, n));
     let create = [
-        "pr", "create", "--repo", &ws.repo, "--base", &base, "--head", &branch, "--title", &title,
+        "pr", "create", "--repo", &ws.repo, "--base", &base, "--head", branch, "--title", &title,
         "--body", &body,
     ];
     let out = run("gh", &ws.project, &create).await?;
