@@ -12,6 +12,7 @@
   import { clock, dayClock, until } from "../lib/time";
   import type { Commitment, TodayView } from "../lib/types";
   import { openItem } from "../lib/detail.svelte";
+  import { parkedItems } from "../lib/items.svelte";
   import { mergeToday } from "../lib/merge";
   import { nav } from "../lib/nav.svelte";
   import { describe, keyOf } from "../lib/priority";
@@ -21,6 +22,7 @@
   import CommitmentModal from "./today/CommitmentModal.svelte";
   import TodoList from "./today/TodoList.svelte";
   import TriageLine from "./today/TriageLine.svelte";
+  import ParkedLine from "./today/ParkedLine.svelte";
   import UrgentModal from "./today/UrgentModal.svelte";
   import UrgentPill from "./today/UrgentPill.svelte";
 
@@ -51,6 +53,9 @@
   }
 
   $effect(() => poll(load));
+
+  const { state: parked, load: loadParked } = parkedItems();
+  $effect(() => poll(loadParked));
 
   // Everything on Today follows the area switcher.
   const upcoming = $derived(data?.upcoming.filter(inArea) ?? []);
@@ -125,6 +130,7 @@
         <button type="button" class="link more" onclick={() => (nav.view = "priorities")}>{t("today.more", { n: hiddenPriorities })}</button>
       {/if}
       <TriageLine issues={triage} />
+      <ParkedLine items={parked.items.filter(inArea)} {now} />
     </section>
 
     <TodoList {todos} {now} onChanged={load} />

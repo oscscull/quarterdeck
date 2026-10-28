@@ -6,17 +6,12 @@
   import { STAGES } from "../lib/groups";
   import { ALL, areas, inArea } from "../lib/areas.svelte";
   import { chatContext } from "../lib/chat.svelte";
-  import { parkedItems, workItems } from "../lib/items.svelte";
+  import { workItems } from "../lib/items.svelte";
   import { poll } from "../lib/poll";
 
   const { state: list, load } = workItems();
-  const { state: parked, load: loadParked } = parkedItems();
-  let showParked = $state(false);
 
   $effect(() => poll(load));
-  $effect(() => poll(loadParked));
-
-  const parkedHere = $derived(parked.items.filter(inArea));
 
   const newArea = (): string => (areas.current !== ALL ? areas.current : (areas.list[0]?.id ?? ""));
   const isEmpty = $derived(list.items.filter(inArea).length === 0);
@@ -50,20 +45,6 @@
       {/each}
     </div>
   </div>
-  {#if parkedHere.length > 0}
-    <section class="parked" aria-label={t("board.parked", { n: parkedHere.length })}>
-      <button type="button" class="link" aria-expanded={showParked} onclick={() => (showParked = !showParked)}>
-        {showParked ? t("board.hideParked") : t("board.parked", { n: parkedHere.length })}
-      </button>
-      {#if showParked}
-        <div class="parked-list">
-          {#each parkedHere as item (`${item.node ?? ""}${item.id}`)}
-            <ItemCard {item} now={list.now} />
-          {/each}
-        </div>
-      {/if}
-    </section>
-  {/if}
 </main>
 
 <style>
@@ -79,25 +60,6 @@
     align-items: center;
     gap: 12px;
     margin-bottom: 20px;
-  }
-
-  .parked {
-    margin-top: 32px;
-  }
-
-  .parked-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 10px;
-    margin-top: 8px;
-  }
-
-  .link {
-    padding: 8px 0;
-    border: 0;
-    background: transparent;
-    color: var(--accent);
-    font-size: 13px;
   }
 
   .scroll {

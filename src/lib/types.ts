@@ -24,7 +24,7 @@ export interface WorkItem {
   turn: Turn | null;
   /** When the turn runs out. */
   turnUntil: string | null;
-  /** On the user's turn: what's needed from them. */
+  /** On the user's turn: what's needed from them. On a later turn: why it waits, and what then. */
   need?: string | null;
   /** On a later (parked) turn: events that bring it back sooner. */
   wake?: OnEvent[];
@@ -40,6 +40,13 @@ export interface WorkItem {
   openedAt: string;
   stateSince: string;
   rank: number;
+}
+
+/** What parking sends: when it's back (RFC 3339), why, and who picks it up then. */
+export interface Parking {
+  until: string;
+  why: string | null;
+  then: "you" | "agent";
 }
 
 /** What the UI sends to create (empty id) or edit an item. */

@@ -1,6 +1,6 @@
 // Edits go to the machine that holds the record: `node` is set on records from another machine.
 import { api } from "./api";
-import type { CommitmentInput, ItemDetail, ItemInput, Schedule, Step, TodoEdit } from "./types";
+import type { CommitmentInput, ItemDetail, ItemInput, Parking, Schedule, Step, TodoEdit } from "./types";
 
 const peer = <T = unknown>(node: string, tool: string, args: object): Promise<T> => api.peerCall<T>(node, tool, args);
 
@@ -37,8 +37,8 @@ export const route = {
     node ? peer(node, "delete_schedule", { id }) : api.deleteSchedule(id),
   itemDetail: (node: string | undefined, id: string) =>
     node ? peer<ItemDetail>(node, "get_item", { id }) : api.itemDetail(id),
-  park: (node: string | undefined, id: string, until: string, why: string | null) =>
-    node ? peer(node, "park_item", { id, until, why }) : api.parkItem(id, until, why),
+  park: (node: string | undefined, id: string, park: Parking) =>
+    node ? peer(node, "park_item", { id, ...park }) : api.parkItem(id, park),
   unpark: (node: string | undefined, id: string) =>
     node ? peer(node, "park_item", { id, parked: false }) : api.unparkItem(id),
   deleteItem: (node: string | undefined, id: string) =>

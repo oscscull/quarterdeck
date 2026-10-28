@@ -25,9 +25,12 @@ export function workItems() {
   return { state, load };
 }
 
-/** Parked items from every machine, for the board's parked list. */
+/** When parked work comes back; one with no time sorts last. */
+const backAt = (i: WorkItem): number => (i.turnUntil ? new Date(i.turnUntil).getTime() : Infinity);
+
+/** Parked items from every machine, soonest back first. */
 export function parkedItems() {
-  const state = $state({ items: [] as WorkItem[], error: "" });
+  const state = $state({ items: [] as WorkItem[], error: "", now: new Date() });
 
   async function load(): Promise<void> {
     try {
@@ -35,7 +38,8 @@ export function parkedItems() {
         api.parkedItems(),
         fromPeers<WorkItem[]>("list_items", { parked: true, include_done: true }),
       ]);
-      state.items = [...local, ...remote.flatMap((r) => tag(r.value, r.node))];
+      state.items = [...local, ...remote.flatMap((r) => tag(r.value, r.node))].sort((a, b) => backAt(a) - backAt(b));
+      state.now = new Date();
       state.error = "";
     } catch (e) {
       state.error = errorText(e);

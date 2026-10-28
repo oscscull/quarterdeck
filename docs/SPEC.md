@@ -40,11 +40,13 @@ The window title shows the running version, so it's clear when an update has lan
 - **Today**: next meeting, Priorities (in rank order: questions on an item, else what the user's
   turn on it needs; the first `priority_limit` show), one line for GitHub issues nobody has picked up yet
   (opens to the list), To do (things only the user can do, each with an optional link), and "From
-  Claude".
+  Claude". Under Priorities, one line counts parked work and says when the next is back; it opens
+  Priorities.
 - **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today. Each row
   shows its stage, whose turn it is, its state and (once started) how long it has been open; a filter
-  narrows the list to one side's turn, and ranking still works within it.
-- **Board**: items by stage, with parked items in a list of their own below.
+  narrows the list to one side's turn, and ranking still works within it. Below, **Parked**: soonest
+  back first, each with its note, when it's back and to whom, and a countdown.
+- **Board**: items by stage; parked work is left out.
 - **An item** opens with what's needed from the user when it's their turn (the need, or the
   questions asked), the reply box, then its state, links and (collapsed) history.
 - **Agent**: every item that is the agent's turn, and what's running (each run's latest step, live; click for its steps so far), every schedule (toggle, edit, delete, run now, create by describing
@@ -74,8 +76,11 @@ forward through its clock and checks each ends on Today.
 
 **Parking** puts started work off until something happens: a time, events (triggers in the
 schedules' format, e.g. another item's `item.stage` to done), or both, whichever comes first. It's
-a `later` turn, so it leaves Today and the board's columns and comes back as the user's turn. With
-only events, `later_hours` is the backstop. Nothing parks for good: work nobody will pick up is
+a `later` turn, so it leaves Today and the board's columns for the Parked list, and comes back as
+the user's turn, or the agent's if the parking says so (it then needs a note). Its note (why it
+waits, what to do then) is kept on the turn and becomes the reason it came back, so the user's
+need or the agent's prompt says what to do. Use it for any fixed wait, like days for traffic to
+drain. With only events, `later_hours` is the backstop. Nothing parks for good: work nobody will pick up is
 closed or deleted.
 
 ## Where things live

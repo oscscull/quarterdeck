@@ -20,13 +20,14 @@
 
   let until = $state(day(new Date(Date.now() + WEEK_MS)));
   let why = $state("");
+  let then = $state<"you" | "agent">("you");
   let error = $state("");
 
   async function park(): Promise<void> {
     try {
       // Comes back at the start of the chosen day.
       const at = new Date(`${until}T09:00:00`).toISOString();
-      await route.park(node, id, at, why.trim() || null);
+      await route.park(node, id, { until: at, why: why.trim() || null, then });
       changed();
       onParked();
     } catch (e) {
@@ -43,8 +44,13 @@
   </label>
   <label>
     <span class="section-label">{t("park.why")}</span>
-    <input type="text" bind:value={why} placeholder={t("park.whyPlaceholder")} />
+    <input type="text" bind:value={why} placeholder={t("park.whyPlaceholder")} required={then === "agent"} />
   </label>
+  <fieldset>
+    <legend class="section-label">{t("park.then")}</legend>
+    <label class="choice"><input type="radio" bind:group={then} value="you" /> {t("park.thenYou")}</label>
+    <label class="choice"><input type="radio" bind:group={then} value="agent" /> {t("park.thenAgent")}</label>
+  </fieldset>
   {#if error}<p class="error">{error}</p>{/if}
   <div class="buttons">
     <button type="button" class="button-secondary" onclick={onCancel}>{t("item.cancel")}</button>
@@ -63,6 +69,24 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  fieldset {
+    display: flex;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    margin-bottom: 4px;
+  }
+
+  .choice {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
   }
 
   .buttons {

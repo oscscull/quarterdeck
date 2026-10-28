@@ -49,6 +49,14 @@ pub const fn back_to(then: Option<Turn>, default: Turn) -> Turn {
     }
 }
 
+/// Why parked work came back: its note if it has one, which says what to do now.
+pub fn back_from_later(note: Option<&str>) -> String {
+    note.map_or_else(
+        || "back from later: pick it up, put it off again, or close it".to_owned(),
+        |n| format!("back from parking: {n}"),
+    )
+}
+
 fn agent(work: Work, late: bool) -> Due {
     if late {
         let why = if work == Work::Running {
@@ -84,9 +92,9 @@ pub fn due(item: &WorkItem, work: Work, limits: &TurnSettings, now: DateTime<Utc
             to: back_to(*then, limits.others_then),
             why: format!("waited {}h on {waiting_on}", limits.others_hours),
         },
-        Whose::Later { then, .. } => Due::PassTo {
+        Whose::Later { then, note, .. } => Due::PassTo {
             to: back_to(*then, Turn::You),
-            why: "back from later: pick it up, put it off again, or close it".to_owned(),
+            why: back_from_later(note.as_deref()),
         },
     }
 }

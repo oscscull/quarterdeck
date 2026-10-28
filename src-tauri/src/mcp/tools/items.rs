@@ -8,6 +8,7 @@ use super::{in_area, time};
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, Status, WorkItem};
 use crate::domain::trigger::OnEvent;
+use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::store::{asks, events, items};
 use crate::turns::Clock;
@@ -29,10 +30,13 @@ const MOVE_ITEM: &str = "Moves an item to a position in the priorities, 1 being 
 const PARK_ITEM: &str = "Parks started work until something happens: a time (`until`, RFC 3339), \
              events (`wake`, triggers as in schedules, e.g. {\"on\": \"item.stage\", \"when\": \
              {\"item\": \"app#9\", \"stage\": \"done\"}}), or both, whichever comes first. With only \
-             events, the configured later length is the backstop. It leaves Today until then, then \
-             comes back as the user's turn. Nothing parks for good: close work nobody will pick up \
-             (update_item stage done). Unstarted work can't be parked; it's already off Today. \
-             `parked: false` brings it back now. Put the user's reason in `why`.";
+             events, the configured later length is the backstop. Use it for any fixed wait (e.g. \
+             \"14 days for traffic to reach 0\"): don't leave such work on the user's or others' turn. \
+             It leaves Today for the Parked list (with a countdown) until then, then comes back as \
+             the user's turn, or the agent's with `then: agent`. `why` says what it waits for and what \
+             to do once it's back (required for the agent); it's repeated when it wakes. Nothing \
+             parks for good: close work nobody will pick up (update_item stage done). Unstarted work \
+             can't be parked; it's already off Today. `parked: false` brings it back now.";
 const ADD_NOTE: &str = "Adds a line to an item's history, e.g. \"opened PR #821\". Use for progress worth \
              remembering; the user sees it in the item's history.";
 
@@ -190,8 +194,11 @@ struct ParkArgs {
     /// Events that bring it back sooner.
     #[serde(default)]
     wake: Vec<OnEvent>,
-    /// The user's reason, noted in its history.
+    /// What it waits for and what to do once it's back. Noted in its history and repeated when it
+    /// wakes.
     why: Option<String>,
+    /// Who picks it up once it's back: `you` (the default) or `agent`.
+    then: Option<Turn>,
 }
 
 const fn yes() -> bool {
@@ -208,6 +215,7 @@ async fn park(ctx: Ctx, args: ParkArgs) -> AppResult<()> {
         until: args.until.as_deref().map(time).transpose()?,
         wake: args.wake,
         why: args.why,
+        then: args.then,
     };
     crate::park::park(&ctx.db, &args.id, parking, clock).await
 }
