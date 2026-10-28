@@ -7,6 +7,7 @@ use crate::app::App;
 use crate::domain::ask::Ask;
 use crate::domain::event::ItemEvent;
 use crate::domain::item::{ItemInput, WorkItem};
+use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::park::{self, Parking};
 use crate::store::{asks, events, items};
@@ -31,14 +32,20 @@ pub async fn delete_item(app: State<'_, App>, id: String) -> AppResult<()> {
     items::delete(&app.db, &id).await
 }
 
-/// Parks started work until `until` (RFC 3339), with the user's reason if they gave one.
-#[tauri::command]
-pub async fn park_item(
-    app: State<'_, App>,
-    id: String,
+/// When parked work comes back, why, and who picks it up.
+#[derive(Debug, serde::Deserialize)]
+pub struct ParkRequest {
+    /// RFC 3339.
     until: String,
     why: Option<String>,
-) -> AppResult<()> {
+    /// The user (unset) or the agent.
+    then: Option<Turn>,
+}
+
+/// Parks started work until the time asked, with the user's reason if they gave one.
+#[tauri::command]
+pub async fn park_item(app: State<'_, App>, id: String, park: ParkRequest) -> AppResult<()> {
+    let ParkRequest { until, why, then } = park;
     let until = chrono::DateTime::parse_from_rfc3339(&until)
         .map_err(|e| crate::error::AppError::BadInput(format!("'{until}' is not a time: {e}")))?
         .with_timezone(&Utc);
@@ -46,6 +53,7 @@ pub async fn park_item(
         until: Some(until),
         wake: Vec::new(),
         why,
+        then,
     };
     let limits = app.settings()?.turns;
     park::park(&app.db, &id, parking, Clock::now(&limits)).await

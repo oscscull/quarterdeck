@@ -70,10 +70,12 @@ mod tests {
             all.push(Whose::Later {
                 then,
                 wake: Vec::new(),
+                note: None,
             });
             all.push(Whose::Later {
                 then,
                 wake: wake.clone(),
+                note: Some("check traffic".to_owned()),
             });
         }
         all

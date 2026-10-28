@@ -51,6 +51,8 @@ pub enum Whose {
     Later {
         then: Option<Turn>,
         wake: Vec<OnEvent>,
+        /// Why it's put off and what to do once it's back, said again when it wakes.
+        note: Option<String>,
     },
 }
 
@@ -135,6 +137,7 @@ pub struct LifeFields {
     pub turn: Option<Turn>,
     #[serde(default)]
     pub turn_until: Option<DateTime<Utc>>,
+    /// The user's turn: what's needed. A later turn: its note.
     #[serde(default)]
     pub need: Option<String>,
     #[serde(default)]
@@ -159,6 +162,7 @@ fn whose(f: LifeFields) -> Whose {
         Turn::Later => Whose::Later {
             then: f.then_turn,
             wake: f.wake,
+            note: f.need,
         },
     }
 }
@@ -190,9 +194,10 @@ fn whose_fields(whose: Whose, f: &mut LifeFields) {
             f.waiting_on = Some(waiting_on);
             f.then_turn = then;
         }
-        Whose::Later { then, wake } => {
+        Whose::Later { then, wake, note } => {
             f.then_turn = then;
             f.wake = wake;
+            f.need = note;
         }
     }
 }
@@ -243,6 +248,15 @@ mod tests {
                     then: Some(Turn::Agent),
                 },
                 until: None,
+            }),
+            Life::Active(Active {
+                phase: Phase::InProgress,
+                whose: Whose::Later {
+                    then: Some(Turn::Agent),
+                    wake: Vec::new(),
+                    note: Some("traffic should be 0: remove the route".to_owned()),
+                },
+                until: Some(Utc::now()),
             }),
         ];
         for life in lives {

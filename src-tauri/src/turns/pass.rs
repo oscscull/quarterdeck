@@ -12,7 +12,8 @@ pub struct Pass {
     pub to: Turn,
     /// What was done, or what ran out. Kept in the item's history.
     pub why: String,
-    /// For the user's turn: what's needed from them. Unset, the reason stands in for it.
+    /// For the user's turn: what's needed from them. Unset, the reason stands in for it. For a later
+    /// turn: what to do once it's back.
     pub need: Option<String>,
     /// For others' turn: who it waits on.
     pub waiting_on: Option<String>,
@@ -56,15 +57,14 @@ impl Pass {
 
     /// The turn it hands over, carrying what that turn needs.
     pub fn whose(&self) -> Whose {
+        let need = self
+            .need
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty());
         match self.to {
             Turn::You => Whose::You {
-                need: self
-                    .need
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or(&self.why)
-                    .to_owned(),
+                need: need.unwrap_or(&self.why).to_owned(),
             },
             Turn::Agent => Whose::Agent,
             Turn::Others => Whose::Others {
@@ -77,6 +77,7 @@ impl Pass {
             Turn::Later => Whose::Later {
                 then: self.then,
                 wake: self.wake.clone(),
+                note: need.map(str::to_owned),
             },
         }
     }

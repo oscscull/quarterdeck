@@ -26,14 +26,27 @@ export function dayClock(iso: string, now: Date): string {
   return sameDay(date, now) ? clock(iso) : `${weekdayFormat.format(date)} ${clock(iso)}`;
 }
 
-/** "in 28 min", "in 2h 5m", or "now" once started. */
+/** "in 28 min", "in 2h 5m", "in 9d 4h", or "now" once started. */
 export function until(iso: string, now: Date): string {
   const ms = new Date(iso).getTime() - now.getTime();
   if (ms <= 0) return t("time.now");
   const minutes = Math.ceil(ms / MINUTE);
   if (minutes < 60) return t("time.inMinutes", { n: minutes });
-  return t("time.inHours", { h: Math.floor(minutes / 60), m: minutes % 60 });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t("time.inHours", { h: hours, m: minutes % 60 });
+  return t("time.inDays", { d: Math.floor(hours / 24), h: hours % 24 });
 }
+
+const dateClockFormat = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** "Thu 12 Nov, 09:00". */
+export const dateClock = (iso: string): string => dateClockFormat.format(new Date(iso));
 
 export function ageMs(iso: string, now: Date): number {
   return now.getTime() - new Date(iso).getTime();

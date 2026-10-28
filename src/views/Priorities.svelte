@@ -3,6 +3,7 @@
   import AreaDot from "../components/AreaDot.svelte";
   import Chip from "../components/Chip.svelte";
   import LoadError from "../components/LoadError.svelte";
+  import ParkedList from "../components/ParkedList.svelte";
   import TurnFilter from "../components/TurnFilter.svelte";
   import { api, errorText } from "../lib/api";
   import { t } from "../lib/copy";
@@ -12,7 +13,7 @@
   import { ALL, areas, inArea } from "../lib/areas.svelte";
   import { newItem, openItem } from "../lib/detail.svelte";
   import { chatContext } from "../lib/chat.svelte";
-  import { workItems } from "../lib/items.svelte";
+  import { parkedItems, workItems } from "../lib/items.svelte";
   import { poll } from "../lib/poll";
   import { reorder } from "../lib/rank";
   import { route } from "../lib/route";
@@ -26,6 +27,10 @@
 
   $effect(() => poll(load));
 
+  const { state: parked, load: loadParked } = parkedItems();
+  $effect(() => poll(loadParked));
+  const parkedHere = $derived(parked.items.filter(inArea));
+
   const inPlay = $derived(list.items.filter((i) => i.stage !== "done" && inArea(i)));
   const visible = $derived(inPlay.filter((i) => matchesTurn(i, filter)));
   const oldest = $derived(
@@ -33,7 +38,7 @@
   );
 
   $effect(() => {
-    chatContext.text = JSON.stringify({ area: areas.current, turn: filter, ranked: visible });
+    chatContext.text = JSON.stringify({ area: areas.current, turn: filter, ranked: visible, parked: parkedHere });
   });
 
   // Ids repeat across machines, so the list is keyed by machine and id.
@@ -119,6 +124,13 @@
       <li class="hint empty">{t(filter === "all" ? "empty.priorities" : "empty.prioritiesTurn")}</li>
     {/each}
   </ol>
+
+  <section class="parked" aria-label={t("parked.title")}>
+    <h2 class="section-label">{t("parked.title")} <span class="mono count">{parkedHere.length}</span></h2>
+    <p class="hint intro-small">{t("parked.hint")}</p>
+    <LoadError error={parked.error} />
+    <ParkedList items={parkedHere} now={parked.now} />
+  </section>
 </div>
 
 <style>
@@ -134,6 +146,19 @@
     border: 0;
     background: transparent;
     text-align: left;
+  }
+
+  .parked {
+    margin-top: 40px;
+  }
+
+  .intro-small {
+    margin: 4px 0 12px;
+    font-size: 13px;
+  }
+
+  .count {
+    color: var(--muted);
   }
 
   .empty {
