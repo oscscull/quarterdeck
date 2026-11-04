@@ -1,9 +1,9 @@
 //! Takes the user's answers back to Claude. Work on a PR, issue or repo in a known project happens in
 //! that project's worktree: the asking session is resumed if it ran there, otherwise a new session
 //! starts there with the question and answer. Elsewhere the session that asked, or the one holding
-//! the item, is resumed. With nobody to tell, the user is told instead (see `undelivered`). An
-//! answer stays until a run reaches the agent with it, so one sent while the agent is down goes
-//! again when it's back.
+//! the item, is resumed, and with neither a new session starts in Quarterdeck's folder, told why
+//! it has no checkout so it can fix the item's link or ask. An answer stays until a run reaches the
+//! agent with it, so one sent while the agent is down goes again when it's back.
 
 use std::collections::HashSet;
 
@@ -12,18 +12,16 @@ use tauri::{AppHandle, Manager as _};
 use super::dispatch::{self, Job};
 use super::failed::{self, Failure};
 use super::thread::{self, Thread};
-use super::undelivered;
 use crate::app::App;
-use crate::claude::reach;
+use crate::claude::{reach, sessions};
 use crate::config::prompts::{Prompt, render};
 use crate::config::settings::Settings;
 use crate::domain::ask::Answered;
 use crate::domain::item::WorkItem;
 use crate::domain::session::SessionRef;
 use crate::error::AppResult;
-use crate::store::{asks, items, runs, watch};
-use crate::turns::Clock;
-use crate::workspace::{self, Workspace};
+use crate::store::{asks, items, runs};
+use crate::workspace::{self, Located, Missing, Workspace};
 
 pub async fn deliver(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
     let app = handle.state::<App>();
@@ -45,8 +43,7 @@ pub async fn deliver(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
         }
         match deliver_one(handle, settings, &answered, &item).await {
             // The run removes the answer once it reaches the agent.
-            Ok(true) => {}
-            Ok(false) => asks::remove(&app.db, answered.ask.id).await?,
+            Ok(()) => {}
             Err(e) => not_started(handle, settings, (&answered, &item), &e.to_string()).await?,
         }
         busy.insert(item.id.clone());
@@ -71,30 +68,27 @@ async fn not_started(
         detail,
         run: None,
     };
-    failed::report(handle, &failure, &settings.turns).await?;
-    asks::remove(&handle.state::<App>().db, answered.ask.id).await
+    // An answer that will be tried again stays to go with it.
+    match failed::report(handle, &failure, &settings.turns).await? {
+        failed::Handled::TryingAgain => Ok(()),
+        failed::Handled::HandedBack => {
+            asks::remove(&handle.state::<App>().db, answered.ask.id).await
+        }
+    }
 }
 
-/// Starts the run that takes one answer to the agent (true), or tells the user nobody can take it.
+/// Starts the run that takes one answer to the agent.
 async fn deliver_one(
     handle: &AppHandle,
     settings: &Settings,
     answered: &Answered,
     item: &WorkItem,
-) -> AppResult<bool> {
+) -> AppResult<()> {
     let app = handle.state::<App>();
     let known = known_session(&app, answered, item).await?;
     let located = workspace::locate(settings, item)?;
-    let Some(thread) = thread::thread_for(known, located.as_ref().ok()) else {
-        let missing = located.err().map(|m| m.to_string()).unwrap_or_default();
-        let clock = Clock::now(&settings.turns);
-        return undelivered::report(&app.db, answered, &missing, clock)
-            .await
-            .map(|()| false);
-    };
-    start(handle, settings, (answered, item), (thread, located.ok()))
-        .await
-        .map(|()| true)
+    let thread = thread::thread_for(known, located.as_ref().ok());
+    start(handle, settings, (answered, item), (thread, located)).await
 }
 
 /// Hands the answer to the agent.
@@ -102,36 +96,36 @@ async fn start(
     handle: &AppHandle,
     settings: &Settings,
     (answered, item): (&Answered, &WorkItem),
-    (thread, ws): (Thread, Option<Workspace>),
+    (thread, located): (Thread, Located),
 ) -> AppResult<()> {
     let app = handle.state::<App>();
-    let prompt = prompt_for(&app, answered, item, ws.as_ref())?;
+    let prompt = prompt_for(&app, answered, item, located.as_ref())?;
     let job = Job::new("Answer", item.id.clone(), prompt, thread)
-        .in_workspace(ws)
+        .in_workspace(located.ok())
         .delivering(answered.ask.id);
     dispatch::run(handle, settings, job).await
 }
 
-/// The session that asked, else the one holding the item.
+/// The session that asked, else the one holding the item, if Claude can resume it.
 async fn known_session(
     app: &App,
     answered: &Answered,
     item: &WorkItem,
 ) -> AppResult<Option<SessionRef>> {
-    if answered.ask.asker.is_some() {
-        return Ok(answered.ask.asker.clone());
+    if let Some(asker) = answered.ask.asker.clone().filter(sessions::exists) {
+        return Ok(Some(asker));
     }
-    watch::session_for(&app.db, &item.id).await
+    super::held::session(&app.db, &item.id).await
 }
 
 fn prompt_for(
     app: &App,
     answered: &Answered,
     item: &WorkItem,
-    ws: Option<&Workspace>,
+    located: Result<&Workspace, &Missing>,
 ) -> AppResult<String> {
     let link = item.link.clone().unwrap_or_default();
-    let place = workspace::describe(&app.config, ws)?;
+    let place = workspace::describe(&app.config, located)?;
     let vars = [
         ("item", item.id.as_str()),
         ("title", item.title.as_str()),

@@ -127,7 +127,8 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
   runs that area, skipping `skip_labels`. No agent is involved. An issue one of the user's open PRs
   closes is left to that PR's item, which notes it; if that PR closes unmerged, the issue comes
   back. An item is closed only when `gh` says its issue closed, and reopened if the issue reopens.
-  An agent's hand-made item linking the issue becomes the synced one. Since the item links the
+  An agent's hand-made open item linking the issue becomes the synced one, whatever its id; a
+  twin the sync made that nobody picked up goes. Since the item links the
   issue, queueing it for Claude works as for any issue item.
 - **Calendar**: meetings, with recurrence, exceptions and join links. A feed is either a private iCal
   link or a calendar in the macOS Calendar app, for accounts that offer no link. A feed that can't
@@ -205,17 +206,26 @@ CI) or `later` (with what wakes it), and a clock, so nothing idles. Turns change
 read the stored turn and never derive it. A wait that runs out goes only to the user or the agent,
 and the agent's runs out to the user, so every turn ends with the user.
 
+Nothing an agent or a sync sets up can stall an item: the agent always has somewhere to run, a
+session it can't resume is dropped, and a failure is tried again by itself or waits for what it
+needs (a connection) to come back. The user's turn means only that the user is needed.
+
 - **The agent's turn**: Quarterdeck prompts it. Each tick, an agent's-turn item with nothing
-  running gets a run (`prompts/continue.md`), resuming the session holding it or starting one; a
+  running gets a run (`prompts/continue.md`), resuming the session holding it or starting one: in
+  its worktree, else in Quarterdeck's own folder, told why it has no checkout
+  (`prompts/no-workspace.md`) so it links the item or asks where the repo is; a
   session working outside Quarterdeck is left alone until it goes quiet for `quiet_minutes`. Every
   run on an item starts on the agent's turn and ends with it handed on: the agent records what it
   did with `pass_turn` (to itself, the user, or others), as `prompts/hand-over.md` tells every run.
-  A run that ends without passing hands the turn to the user with its last message; a run that
-  fails raises an urgent item with Retry (`retry_urgent`: back to the agent, whose next prompt is
-  the failed run's own, kept on its run record) and hands it to the user. Passing to itself keeps
-  the clock, so after `agent_hours` the turn comes back to the user regardless.
-- **When the agent can't run at all** (offline, `claude` missing, API overloaded), its work waits
-  instead of failing. Each tick checks first that `claude` exists and `[outage] probe` answers; a
+  A run that ends without passing hands the turn to the user with its last message. A run that
+  fails is asked again by itself, in a new session, up to `failure_retries` times in a row (any
+  other pass starts the count again); after that it raises an urgent item with Retry
+  (`retry_urgent`: back to the agent, whose next prompt is the failed run's own, kept on its run
+  record) and hands it to the user. Passing to itself keeps the clock, so after `agent_hours` the
+  turn comes back to the user regardless.
+- **When the agent can't run at all** (offline, `claude` missing, API overloaded, GitHub
+  unreachable from `gh` or `git`), its work waits instead of failing. Each tick checks first that
+  `claude` exists and `[outage] probe` and `github_probe` answer; a
   failed check, or a run whose error says it never reached the agent, raises one urgent item and
   stops prompting, delivering answers and starting the queue. Agent's-turn items keep the turn
   and an undelivered answer stays to go again. Checks repeat after `first_retry_seconds`, doubling
@@ -223,9 +233,7 @@ and the agent's runs out to the user, so every turn ends with the user.
   item and gives waiting items a fresh `agent_hours`.
 - **The user's turn**: says what's needed (`pass_turn` requires `need`; system passes use their
   reason) and is reminded every `you_remind_hours`. Any reply (an answer, Tell Claude)
-  passes the turn to the agent, unless another question on the item is open; one that no session
-  or worktree can take is raised as urgent (replacing the item's earlier one) and the turn comes
-  back with the cause: no link, a link that isn't a GitHub repo or issue, or a repo with no project.
+  passes the turn to the agent, unless another question on the item is open.
 - **Others' turn**: after `others_hours` it goes to the item's `then`, else `others_then` (`you`
   by default; only `you` or `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved, draft or
   changes requested is the user's. GitHub never takes the turn from the agent.
@@ -242,11 +250,15 @@ Questions (`add_ask`) are answered, not ticked off: with one of the agent's `opt
 on Today or the item. Any open item, and every decision on Today, also takes a plain instruction
 ("Tell Claude what to do", `tell_claude`), delivered the same way (`prompts/message.md`). Delivery
 follows on the next tick. The answer goes on the item's history, and the scheduler resumes the session
-that asked (or the one holding the item) with it (`prompts/answer.md`). Sessions are stored with
-their working directory, since Claude only resumes a session from the folder it ran in.
+that asked (or the one holding the item) with it (`prompts/answer.md`), else starts one as on the
+agent's turn. Sessions are stored with their working directory, since Claude only resumes a
+session from the folder it ran in. `claim_item` and `add_ask` read the caller's session from
+Claude Code (`CLAUDE_CODE_SESSION_ID`, in the MCP server's folder) and refuse one passed that has
+no transcript there; one stored that Claude can no longer resume is let go, noted on the item,
+and the work starts a new session.
 
 Work Quarterdeck starts on a PR (fixing CI, acting on an answer) or on an item whose link is a
-GitHub issue or repo runs in that repo's project when `[[projects]]` maps it to a checkout
+GitHub PR, issue or repo runs in that repo's project when `[[projects]]` maps it to a checkout
 (`set_project`): in a git worktree per item under the data folder, in the permission mode
 `project_permission_mode` sets (default `auto`, as in the user's own sessions), with the
 project's `.claude/settings.local.json` copied in before every run. A PR's worktree is detached at its head; an
@@ -256,7 +268,9 @@ gets the issue's text (`prompts/issue-workspace.md`); a repo's is a new branch
 project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes and no
 question on the item is open: it pushes commits the branch doesn't have and, for an issue or repo,
 opens a PR (closing the issue, titled from the first commit) and makes the item that PR's, in review, so syncs and
-CI results follow it. A push that fails is raised as urgent and the turn goes to the user. Worktrees are
+CI results follow it. A push that fails keeps the commits in the worktree: with no connection the
+agent gets the turn back once it returns; otherwise the agent gets it to fix what stopped it, up
+to `failure_retries` times in a row, then it's raised as urgent and the user's. Worktrees are
 removed once their item is done. Repos with no project get a run that can read CI but not change
 code.
 

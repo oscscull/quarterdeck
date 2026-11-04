@@ -12,29 +12,27 @@ use crate::config::settings::Settings;
 use crate::domain::item::WorkItem;
 use crate::error::AppResult;
 use crate::retry;
-use crate::store::watch;
 use crate::turns;
-use crate::workspace::{self, Workspace};
+use crate::workspace::{self, Located, Missing, Workspace};
 
 /// The session to carry on in, and the worktree it runs in.
-async fn thread(
-    app: &App,
-    settings: &Settings,
-    item: &WorkItem,
-) -> AppResult<(Thread, Option<Workspace>)> {
-    let ws = workspace::for_item(settings, item)?;
-    let known = watch::session_for(&app.db, &item.id).await?;
-    let thread = thread::thread_for(known, ws.as_ref())
-        .unwrap_or_else(|| Thread::Start(thread::fresh_session()));
-    Ok((thread, ws))
+async fn thread(app: &App, settings: &Settings, item: &WorkItem) -> AppResult<(Thread, Located)> {
+    let located = workspace::locate(settings, item)?;
+    let known = super::held::session(&app.db, &item.id).await?;
+    let thread = thread::thread_for(known, located.as_ref().ok());
+    Ok((thread, located))
 }
 
-async fn prompt_for(app: &App, item: &WorkItem, ws: Option<&Workspace>) -> AppResult<String> {
+async fn prompt_for(
+    app: &App,
+    item: &WorkItem,
+    located: Result<&Workspace, &Missing>,
+) -> AppResult<String> {
     let why = turns::history::last_why(&app.db, &item.id)
         .await?
         .unwrap_or_default();
     let link = item.link.clone().unwrap_or_default();
-    let place = workspace::describe(&app.config, ws)?;
+    let place = workspace::describe(&app.config, located)?;
     let vars = [
         ("item", item.id.as_str()),
         ("title", item.title.as_str()),
@@ -51,12 +49,12 @@ async fn job_for(
     app: &App,
     item: &WorkItem,
     thread: Thread,
-    ws: Option<&Workspace>,
+    located: Result<&Workspace, &Missing>,
 ) -> AppResult<Job> {
     if let Some(asked) = retry::take(&app.db, &item.id).await? {
         return Ok(Job::new(&asked.what, item.id.clone(), asked.prompt, thread));
     }
-    let prompt = prompt_for(app, item, ws).await?;
+    let prompt = prompt_for(app, item, located).await?;
     Ok(Job::new("Carry on", item.id.clone(), prompt, thread))
 }
 
@@ -66,9 +64,9 @@ pub async fn carry_on(handle: &AppHandle, settings: &Settings, item: &WorkItem) 
         return Ok(());
     }
     let app = handle.state::<App>();
-    let (thread, ws) = thread(&app, settings, item).await?;
-    let job = job_for(&app, item, thread, ws.as_ref())
+    let (thread, located) = thread(&app, settings, item).await?;
+    let job = job_for(&app, item, thread, located.as_ref())
         .await?
-        .in_workspace(ws);
+        .in_workspace(located.ok());
     dispatch::run(handle, settings, job).await
 }

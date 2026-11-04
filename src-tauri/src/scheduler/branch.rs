@@ -17,7 +17,7 @@ use crate::domain::schedule::EventKind;
 use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::profile;
-use crate::store::{Db, events, items, watch};
+use crate::store::{Db, events, items};
 use crate::turns::{self, Clock, Pass};
 use crate::workspace::{self, Workspace};
 
@@ -66,15 +66,16 @@ async fn update(db: &Db, settings: &Settings, event: &Fired) -> AppResult<()> {
 async fn fix_conflicts(handle: &AppHandle, settings: &Settings, event: &Fired) -> AppResult<()> {
     let app = handle.state::<App>();
     let item = items::get(&app.db, &event.subject).await?;
-    let ws = workspace::for_item(settings, &item)?;
-    let place = workspace::describe(&app.config, ws.as_ref())?;
+    let located = workspace::locate(settings, &item)?;
+    let place = workspace::describe(&app.config, located.as_ref())?;
+    let ws = located.ok();
     let prompt = prompt_for(
         &app,
         Prompt::FixConflicts,
         &item,
         &[("workspace", place.as_str())],
     )?;
-    let job = match watch::all(&app.db).await?.remove(&item.id) {
+    let job = match super::held::session(&app.db, &item.id).await? {
         Some(session) => {
             let ws = ws.filter(|w| w.holds(&session));
             Job::new("Fix conflicts", item.id, prompt, Thread::Resume(session)).in_workspace(ws)

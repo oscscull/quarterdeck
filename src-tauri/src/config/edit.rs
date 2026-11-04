@@ -187,6 +187,9 @@ pub fn set_turns(config: &Config, change: TurnChange) -> AppResult<()> {
                 t.insert(key, value(n));
             }
         }
+        if let Some(n) = change.failure_retries {
+            t.insert("failure_retries", value(i64::from(n)));
+        }
         if let Some(turn) = change.others_then {
             t.insert("others_then", value(turn.as_str()));
         }

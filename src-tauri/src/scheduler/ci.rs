@@ -13,7 +13,7 @@ use crate::domain::fired::Fired;
 use crate::domain::item::WorkItem;
 use crate::domain::schedule::EventKind;
 use crate::error::AppResult;
-use crate::store::{items, watch};
+use crate::store::items;
 use crate::workspace::{self, Workspace};
 
 /// True for the events this reacts to.
@@ -32,8 +32,9 @@ pub async fn react(
 ) -> AppResult<()> {
     let app = handle.state::<App>();
     let item = items::get(&app.db, &event.subject).await?;
-    let ws = workspace::for_item(settings, &item)?;
-    let claimed = watch::all(&app.db).await?.remove(&item.id);
+    let located = workspace::locate(settings, &item)?;
+    let ws = located.as_ref().ok().cloned();
+    let claimed = super::held::session(&app.db, &item.id).await?;
     let job = match claimed {
         Some(session) => {
             let passed = event.kind == EventKind::CiPassed.name();
@@ -46,7 +47,7 @@ pub async fn react(
             let session = ws
                 .as_ref()
                 .map_or_else(thread::fresh_session, Workspace::new_session);
-            let place = workspace::describe(&app.config, ws.as_ref())?;
+            let place = workspace::describe(&app.config, located.as_ref())?;
             let prompt = prompt_for(&app, Prompt::FixCi, &item, &[("workspace", place.as_str())])?;
             Job::new("Fix CI", item.id, prompt, Thread::Start(session)).in_workspace(ws)
         }

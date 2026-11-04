@@ -156,7 +156,8 @@ token = ""
 # clock, so nothing sits forever. The agent's turn ends when it hands it on, or after agent_hours
 # (back to you). Your turn reminds you every you_remind_hours. Others' turn comes back after
 # others_hours, to others_then ("you" or "agent") unless the item says otherwise. An agent session
-# working outside Quarterdeck that goes quiet for quiet_minutes is prompted to carry on.
+# working outside Quarterdeck that goes quiet for quiet_minutes is prompted to carry on. A run that
+# fails is tried again by itself, in a new session, failure_retries times in a row before it's yours.
 [turns]
 agent_hours = 4
 you_remind_hours = 24
@@ -164,15 +165,18 @@ others_hours = 24
 later_hours = 72
 others_then = "you"
 quiet_minutes = 45
+failure_retries = 2
 
 # When the agent can't run at all (offline, `claude` missing), its work waits instead of failing:
 # one card says so, and its items keep the agent's turn. Quarterdeck checks again after
 # first_retry_seconds, doubling the wait each time up to max_retry_seconds; coming back to the
-# window checks at once. `probe` is a host:port the agent needs ("" checks only for `claude`).
+# window checks at once. `probe` is a host:port the agent needs ("" checks only for `claude`), and
+# `github_probe` one that worktrees and pushes need ("" skips it).
 [outage]
 first_retry_seconds = 60
 max_retry_seconds = 900
 probe = "api.anthropic.com:443"
+github_probe = "github.com:443"
 probe_timeout_seconds = 5
 
 # Every merge to main publishes a release; Quarterdeck installs it by itself, so every machine runs

@@ -81,7 +81,7 @@ pub async fn settle(handle: &AppHandle, ended: &Ended<'_>, limits: &TurnSettings
         detail,
         run: Some(ended.run),
     };
-    failed::report(handle, &failure, limits).await
+    failed::report(handle, &failure, limits).await.map(drop)
 }
 
 /// The item keeps the agent's turn, to be prompted again once the agent is back.

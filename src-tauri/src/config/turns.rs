@@ -22,6 +22,9 @@ pub struct TurnSettings {
     pub others_then: Turn,
     /// How long an agent session working outside Quarterdeck can go quiet before it's prompted.
     pub quiet_minutes: i64,
+    /// How many times in a row a failed agent run is tried again, in a new session, before the
+    /// turn goes to the user.
+    pub failure_retries: u32,
 }
 
 impl TurnSettings {
@@ -43,6 +46,7 @@ impl Default for TurnSettings {
             later_hours: 72,
             others_then: Turn::You,
             quiet_minutes: 45,
+            failure_retries: 2,
         }
     }
 }
@@ -56,7 +60,11 @@ pub struct TurnChange {
     pub later_hours: Option<i64>,
     pub others_then: Option<Turn>,
     pub quiet_minutes: Option<i64>,
+    pub failure_retries: Option<u32>,
 }
+
+/// The most a failed run is tried again in a row.
+const MAX_RETRIES: u32 = 10;
 
 /// The longest any turn may last: a year.
 const MAX_TURN_HOURS: i64 = 24 * 365;
@@ -80,6 +88,11 @@ impl TurnChange {
             return Err(AppError::BadInput(
                 "others_then must be \"you\" or \"agent\"".to_owned(),
             ));
+        }
+        if self.failure_retries.is_some_and(|r| r > MAX_RETRIES) {
+            return Err(AppError::BadInput(format!(
+                "failure_retries must be at most {MAX_RETRIES}"
+            )));
         }
         let max_minutes = MAX_TURN_HOURS * 60;
         if self

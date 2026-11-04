@@ -19,7 +19,7 @@ pub async fn request(db: &Db, urgent_id: i64, limits: &TurnSettings) -> AppResul
         .run_id
         .ok_or_else(|| AppError::BadInput("this alert has no run to retry".to_owned()))?;
     let asked = run_prompts::get(db, run).await?;
-    meta::set_text(db, &pending(&asked.item_id), &run.to_string()).await?;
+    queue(db, &asked.item_id, run).await?;
     let why = format!("retrying {} after it failed", asked.what);
     turns::pass(
         db,
@@ -29,6 +29,11 @@ pub async fn request(db: &Db, urgent_id: i64, limits: &TurnSettings) -> AppResul
     )
     .await?;
     urgent::dismiss(db, urgent_id).await
+}
+
+/// Asks the failed run again on the item's next prompt.
+pub async fn queue(db: &Db, item_id: &str, run: i64) -> AppResult<()> {
+    meta::set_text(db, &pending(item_id), &run.to_string()).await
 }
 
 /// The failed run to ask again on the item's next prompt, if a retry was asked for. Taken, so it's

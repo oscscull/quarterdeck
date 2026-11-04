@@ -13,6 +13,8 @@ pub struct OutageSettings {
     pub max_retry_seconds: u64,
     /// `host:port` the agent needs; an empty value checks only that `claude` is there.
     pub probe: String,
+    /// `host:port` for GitHub, which worktrees and pushes need; empty skips it.
+    pub github_probe: String,
     /// How long to wait for `probe` to answer.
     pub probe_timeout_seconds: u64,
 }
@@ -36,6 +38,7 @@ impl Default for OutageSettings {
             first_retry_seconds: 60,
             max_retry_seconds: 900,
             probe: "api.anthropic.com:443".to_owned(),
+            github_probe: "github.com:443".to_owned(),
             probe_timeout_seconds: 5,
         }
     }
