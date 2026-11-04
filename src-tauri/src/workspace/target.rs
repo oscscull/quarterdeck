@@ -1,5 +1,5 @@
-//! What an item's work is on GitHub: a PR (from a GitHub item's id), an issue, or new work in a repo
-//! (from its link).
+//! What an item's work is on GitHub: a PR (from a GitHub item's id, or a link to one), an issue, or
+//! new work in a repo (from its link).
 
 use super::Missing;
 use crate::connectors::github;
@@ -35,6 +35,15 @@ fn pr_of(item: &WorkItem) -> Option<Target> {
     })
 }
 
+/// `https://github.com/<owner>/<repo>/pull/<n>`, for an item made by hand before the sync took it.
+fn pr_link_of(link: &str) -> Option<Target> {
+    let (repo, number) = github::link::parse(link, "pull")?;
+    Some(Target {
+        repo,
+        kind: Kind::Pr(number),
+    })
+}
+
 /// `https://github.com/<owner>/<repo>/issues/<n>`.
 fn issue_of(link: &str) -> Option<Target> {
     let (repo, number) = github::link::parse(link, "issues")?;
@@ -52,7 +61,7 @@ fn repo_of(link: &str) -> Option<Target> {
     })
 }
 
-/// A PR item's PR, else the issue or repo the item links to.
+/// A PR item's PR, else the PR, issue or repo the item links to.
 pub fn of(item: &WorkItem) -> Result<Target, Missing> {
     if let Some(pr) = pr_of(item) {
         return Ok(pr);
@@ -62,7 +71,8 @@ pub fn of(item: &WorkItem) -> Result<Target, Missing> {
         .as_deref()
         .filter(|l| !l.trim().is_empty())
         .ok_or(Missing::NoLink)?;
-    issue_of(link)
+    pr_link_of(link)
+        .or_else(|| issue_of(link))
         .or_else(|| repo_of(link))
         .ok_or(Missing::NotRepo)
 }
@@ -141,9 +151,19 @@ mod tests {
     }
 
     #[test]
+    fn items_linking_a_pr_are_that_pr() {
+        let pr = item(
+            "manual",
+            None,
+            Some("https://github.com/me/app/pull/7/files"),
+        );
+        assert_eq!(of(&pr), Ok(target("me/app", Kind::Pr(7))));
+    }
+
+    #[test]
     fn other_links_say_why_they_have_no_target() {
         for link in [
-            "https://github.com/me/app/pull/7",
+            "https://github.com/me/app/pull/",
             "https://github.com/me/app/issues/",
             "https://github.com/me",
             "https://example.com/me/app/issues/3",

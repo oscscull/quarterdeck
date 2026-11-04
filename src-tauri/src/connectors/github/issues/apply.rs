@@ -3,6 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::by_hand;
 use super::fetch::Issue;
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, WorkItem};
@@ -55,6 +56,7 @@ fn input(item: &WorkItem, title: String, stage: Stage, label: String) -> ItemInp
 /// Creates or updates the item for one open issue.
 pub async fn apply(db: &Db, issue: &Issue, area: &str, now: DateTime<Utc>) -> AppResult<()> {
     let ext = issue.external_id();
+    by_hand::take_over(db, issue).await?;
     let old = snapshot(db, &ext).await?;
     match items::by_external(db, SOURCE, &ext).await? {
         None => create(db, issue, area, now).await?,

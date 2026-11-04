@@ -22,8 +22,9 @@ exactly what you need from them, e.g. \"Close #59 and decide the v1 version (#73
 it as the headline.";
 const LIMITS: &str = "Sets how long each turn lasts before Quarterdeck acts: agent_hours (then back \
 to the user), you_remind_hours (between reminders), others_hours (then to others_then), \
-later_hours, others_then (\"you\" or \"agent\"), and quiet_minutes (how long an agent session \
-outside Quarterdeck may go quiet before it's prompted). Only the fields you pass change.";
+later_hours, others_then (\"you\" or \"agent\"), quiet_minutes (how long an agent session \
+outside Quarterdeck may go quiet before it's prompted), and failure_retries (how many times in a \
+row a failed run is tried again by itself before it goes to the user). Only the fields you pass change.";
 
 pub fn tools() -> Vec<Tool> {
     vec![
@@ -85,6 +86,7 @@ struct LimitArgs {
     later_hours: Option<i64>,
     others_then: Option<Turn>,
     quiet_minutes: Option<i64>,
+    failure_retries: Option<u32>,
 }
 
 fn limits(ctx: &Ctx, args: LimitArgs) -> AppResult<()> {
@@ -95,6 +97,7 @@ fn limits(ctx: &Ctx, args: LimitArgs) -> AppResult<()> {
         later_hours: args.later_hours,
         others_then: args.others_then,
         quiet_minutes: args.quiet_minutes,
+        failure_retries: args.failure_retries,
     };
     edit::set_turns(&ctx.config, change)
 }

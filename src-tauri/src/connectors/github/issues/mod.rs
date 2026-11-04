@@ -1,6 +1,7 @@
 //! GitHub issues: open issues of watched owners and repos become items to triage, with no agent.
 
 mod apply;
+mod by_hand;
 mod fate;
 mod fetch;
 

@@ -27,13 +27,14 @@ pub fn fresh_session() -> SessionRef {
 }
 
 /// Where work on an item continues: the known session if it ran in the item's worktree (or there
-/// is none), else a new session in the worktree. None with neither.
-pub fn thread_for(known: Option<SessionRef>, ws: Option<&Workspace>) -> Option<Thread> {
+/// is none), else a new session in the worktree, else a new one in Quarterdeck's folder. There is
+/// always somewhere, so no item waits on its setup.
+pub fn thread_for(known: Option<SessionRef>, ws: Option<&Workspace>) -> Thread {
     match (known, ws) {
-        (Some(s), Some(ws)) if ws.holds(&s) => Some(Thread::Resume(s)),
-        (_, Some(ws)) => Some(Thread::Start(ws.new_session())),
-        (Some(s), None) => Some(Thread::Resume(s)),
-        (None, None) => None,
+        (Some(s), Some(ws)) if ws.holds(&s) => Thread::Resume(s),
+        (_, Some(ws)) => Thread::Start(ws.new_session()),
+        (Some(s), None) => Thread::Resume(s),
+        (None, None) => Thread::Start(fresh_session()),
     }
 }
 
@@ -50,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn only_items_with_no_session_and_no_workspace_have_nobody_to_tell() {
+    fn every_item_has_a_thread() {
         let ws = Workspace {
             project: "/code/app".into(),
             repo: "me/app".to_owned(),
@@ -58,18 +59,18 @@ mod tests {
             dir: "/wt/app-3".into(),
             branch: Some("issue-3".to_owned()),
         };
-        assert!(thread_for(None, None).is_none());
+        assert!(matches!(
+            thread_for(None, None),
+            Thread::Start(SessionRef { cwd: None, .. })
+        ));
         assert!(matches!(
             thread_for(Some(session(None)), None),
-            Some(Thread::Resume(_))
+            Thread::Resume(_)
         ));
-        assert!(matches!(
-            thread_for(None, Some(&ws)),
-            Some(Thread::Start(_))
-        ));
+        assert!(matches!(thread_for(None, Some(&ws)), Thread::Start(_)));
         assert!(matches!(
             thread_for(Some(session(Some("/wt/app-3"))), Some(&ws)),
-            Some(Thread::Resume(_))
+            Thread::Resume(_)
         ));
     }
 }

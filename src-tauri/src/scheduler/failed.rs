@@ -1,4 +1,5 @@
-//! An agent run about an item that failed, and how the failure is handed back to the user.
+//! An agent run about an item that failed: tried again by itself while it has retries left (see
+//! `again`), then handed back to the user.
 
 use chrono::Utc;
 use tauri::{AppHandle, Manager as _};
@@ -30,7 +31,7 @@ const NEXT_STEP_RETRY: &str = "Retry it if it may have been a blip, open its run
 const BRIEF_CHARS: usize = 200;
 
 impl Failure<'_> {
-    fn detail(&self) -> &str {
+    pub fn detail(&self) -> &str {
         if self.detail.trim().is_empty() {
             NO_DETAIL
         } else {
@@ -80,11 +81,25 @@ async fn hand_back(db: &Db, f: &Failure<'_>, limits: &TurnSettings) -> AppResult
     raise_urgent(db, &item, f).await
 }
 
+/// What came of a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Handled {
+    /// The agent keeps the turn and tries again in a new session.
+    TryingAgain,
+    /// Its retries are used up: the user has it, with an urgent item.
+    HandedBack,
+}
+
 pub async fn report(
     handle: &AppHandle,
     failure: &Failure<'_>,
     limits: &TurnSettings,
-) -> AppResult<()> {
-    let title = hand_back(&handle.state::<App>().db, failure, limits).await?;
-    notify::send(handle, &title, &failure.brief())
+) -> AppResult<Handled> {
+    let db = &handle.state::<App>().db;
+    if super::again::try_again(db, failure, limits).await? {
+        return Ok(Handled::TryingAgain);
+    }
+    let title = hand_back(db, failure, limits).await?;
+    notify::send(handle, &title, &failure.brief())?;
+    Ok(Handled::HandedBack)
 }

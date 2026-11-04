@@ -1,5 +1,6 @@
 //! Whether the agent can be reached at all: a quick check before prompting it, and telling a run
-//! that never reached it (offline, `claude` missing) from one that went wrong.
+//! that never reached it (offline, `claude` missing, GitHub unreachable from `gh` or `git`) from one
+//! that went wrong.
 
 use tokio::net::TcpStream;
 
@@ -7,7 +8,8 @@ use crate::cli;
 use crate::config::outage::OutageSettings;
 
 /// Lower-case pieces of the errors a run gives when it couldn't reach the agent, from the
-/// `claude_command` hint in `follow` and the network errors Claude Code and Node report.
+/// `claude_command` hint in `follow`, the network errors Claude Code and Node report, and those
+/// `gh` and `git` give while making a worktree or pushing.
 const UNREACHED: &[&str] = &[
     "set claude_command",
     "connection error",
@@ -23,6 +25,12 @@ const UNREACHED: &[&str] = &[
     "network is unreachable",
     "request timed out",
     "overloaded",
+    "error connecting to",
+    "failed to connect to",
+    "could not resolve hostname",
+    "connection timed out",
+    "operation timed out",
+    "temporary failure in name resolution",
 ];
 
 /// Whether a run failed because it couldn't reach the agent, rather than going wrong.
@@ -41,14 +49,23 @@ pub async fn check(command: &str, settings: &OutageSettings) -> Option<String> {
             "`{command}` wasn't found; set claude_command in quarterdeck.toml to its full path"
         ));
     }
-    if settings.probe.is_empty() {
+    for probe in [&settings.probe, &settings.github_probe] {
+        if let Some(why) = unanswered(probe, settings).await {
+            return Some(why);
+        }
+    }
+    None
+}
+
+/// Why `probe` (`host:port`) didn't answer; `None` when it did or is empty.
+async fn unanswered(probe: &str, settings: &OutageSettings) -> Option<String> {
+    if probe.is_empty() {
         return None;
     }
-    let connect = TcpStream::connect(settings.probe.as_str());
-    match tokio::time::timeout(settings.timeout(), connect).await {
+    match tokio::time::timeout(settings.timeout(), TcpStream::connect(probe)).await {
         Ok(Ok(_)) => None,
-        Ok(Err(e)) => Some(format!("offline: can't reach {} ({e})", settings.probe)),
-        Err(_) => Some(format!("offline: {} didn't answer", settings.probe)),
+        Ok(Err(e)) => Some(format!("offline: can't reach {probe} ({e})")),
+        Err(_) => Some(format!("offline: {probe} didn't answer")),
     }
 }
 
@@ -64,6 +81,12 @@ mod tests {
         assert!(unreached("API Error: Connection error."));
         assert!(unreached("getaddrinfo ENOTFOUND api.anthropic.com"));
         assert!(unreached("API Error: 529 {\"type\":\"overloaded_error\"}"));
+        assert!(unreached(
+            "gh pr view 7 --repo me/app: error connecting to api.github.com"
+        ));
+        assert!(unreached(
+            "git push: fatal: unable to access 'https://github.com/me/app/': Failed to connect to github.com port 443"
+        ));
     }
 
     #[test]
@@ -85,6 +108,7 @@ mod tests {
     async fn no_probe_checks_only_the_program() {
         let settings = OutageSettings {
             probe: String::new(),
+            github_probe: String::new(),
             ..OutageSettings::default()
         };
         assert_eq!(check("/bin/sh", &settings).await, None);

@@ -75,9 +75,12 @@ fn branch(kind: Kind, item_id: &str) -> Option<String> {
     }
 }
 
+/// An item's workspace on this machine, or why it has none.
+pub type Located = Result<Workspace, Missing>;
+
 /// The workspace for an item that's a PR, or links an issue or repo, with a project on this
 /// machine; else why there's none.
-pub fn locate(settings: &Settings, item: &WorkItem) -> AppResult<Result<Workspace, Missing>> {
+pub fn locate(settings: &Settings, item: &WorkItem) -> AppResult<Located> {
     let t = match target::of(item) {
         Ok(t) => t,
         Err(missing) => return Ok(Err(missing)),
@@ -94,15 +97,16 @@ pub fn locate(settings: &Settings, item: &WorkItem) -> AppResult<Result<Workspac
     }))
 }
 
-/// The item's workspace, if it has one on this machine.
-pub fn for_item(settings: &Settings, item: &WorkItem) -> AppResult<Option<Workspace>> {
-    locate(settings, item).map(Result::ok)
-}
-
-/// Tells a run where it is: in a worktree it can push from, or with no checkout at all.
-pub fn describe(config: &Config, ws: Option<&Workspace>) -> AppResult<String> {
-    ws.map_or_else(
-        || render(config, Prompt::NoWorkspace, &[]),
+/// Tells a run where it is: in a worktree it can push from, or with no checkout at all and why.
+pub fn describe(config: &Config, located: Result<&Workspace, &Missing>) -> AppResult<String> {
+    located.map_or_else(
+        |missing| {
+            render(
+                config,
+                Prompt::NoWorkspace,
+                &[("why", &missing.to_string())],
+            )
+        },
         |ws| {
             let (prompt, number) = match ws.kind {
                 Kind::Pr(n) => (Prompt::Workspace, n.to_string()),
@@ -163,7 +167,7 @@ mod tests {
             "baseddsl#178",
             "https://github.com/oscscull/baseddsl/issues/178",
         );
-        let ws = for_item(&settings(), &item).unwrap().unwrap();
+        let ws = locate(&settings(), &item).unwrap().unwrap();
         assert_eq!(
             (ws.kind, ws.branch.as_deref()),
             (Kind::Issue(178), Some("issue-178"))
@@ -175,7 +179,7 @@ mod tests {
     #[test]
     fn repo_links_in_known_projects_get_a_branch_named_after_the_item() {
         let item = linking("B-15", "https://github.com/oscscull/baseddsl");
-        let ws = for_item(&settings(), &item).unwrap().unwrap();
+        let ws = locate(&settings(), &item).unwrap().unwrap();
         assert_eq!(
             (ws.kind, ws.branch.as_deref()),
             (Kind::New, Some("quarterdeck/b-15"))

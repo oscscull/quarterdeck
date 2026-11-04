@@ -64,7 +64,9 @@ async fn prompt(handle: &AppHandle, settings: &Settings, item: &WorkItem) -> App
         detail: &detail,
         run: None,
     };
-    failed::report(handle, &failure, &settings.turns).await
+    failed::report(handle, &failure, &settings.turns)
+        .await
+        .map(drop)
 }
 
 /// A notification is a courtesy; the turn is shown in the app either way.
