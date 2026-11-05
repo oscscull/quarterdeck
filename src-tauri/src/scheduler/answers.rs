@@ -37,10 +37,6 @@ pub async fn deliver(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
             continue;
         }
         let item = items::get(&app.db, &answered.ask.item_id).await?;
-        // Another machine runs this area's agents and delivers there.
-        if settings.node_for(&item.area) != settings.node {
-            continue;
-        }
         match deliver_one(handle, settings, &answered, &item).await {
             // The run removes the answer once it reaches the agent.
             Ok(()) => {}

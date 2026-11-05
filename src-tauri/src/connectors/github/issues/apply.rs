@@ -7,7 +7,6 @@ use super::by_hand;
 use super::fetch::Issue;
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, WorkItem};
-use crate::domain::life::Life;
 use crate::error::AppResult;
 use crate::store::{Db, events, items, sync_state};
 use crate::work;
@@ -28,7 +27,7 @@ struct Snapshot {
 
 /// An issue's item that nobody has picked up: as synced, its turn never passed.
 pub fn untriaged(item: &WorkItem) -> bool {
-    item.source == SOURCE && item.life == Life::Unstarted && item.status.is_none()
+    item.source == SOURCE && item.life.untouched() && item.status.is_none()
 }
 
 async fn snapshot(db: &Db, ext: &str) -> AppResult<Option<Snapshot>> {
@@ -173,7 +172,7 @@ pub async fn close(db: &Db, ext: &str, now: DateTime<Utc>) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::life::{Phase, Whose};
+    use crate::domain::life::{Life, Phase, Whose};
     use crate::domain::turn::Turn;
 
     fn issue(title: &str) -> Issue {
@@ -199,7 +198,7 @@ mod tests {
         let mut item = the_item(&db).await.unwrap();
         assert_eq!(item.id, "app#7");
         assert!(untriaged(&item));
-        item.life = Life::active_as(Phase::InProgress, Whose::Agent, Some(Utc::now()));
+        item.life = Life::open_as(Phase::InProgress, Whose::Agent, Some(Utc::now()));
         items::save(&db, &item).await.unwrap();
         apply(&db, &issue("Breaks"), "projects", Utc::now())
             .await
@@ -261,7 +260,7 @@ mod tests {
         assert!(untriaged(&the_item(&db).await.unwrap()));
         // One someone started stays.
         let mut started = the_item(&db).await.unwrap();
-        started.life = Life::active_as(Phase::InProgress, Whose::Agent, None);
+        started.life = Life::open_as(Phase::InProgress, Whose::Agent, None);
         items::save(&db, &started).await.unwrap();
         cover(&db, &issue("Breaks"), ("me/app#10", "github"), Utc::now())
             .await

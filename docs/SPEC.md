@@ -26,6 +26,13 @@ machine (`node`) that runs it. The switcher filters every view. Each machine kee
 and serves them to peers; the UI merges peers' data and sends edits back to the record's machine.
 Connectors and schedules only act for areas this machine runs.
 
+The machine that holds a record keeps its clock, whatever area it's in: no other machine has it.
+Each peer pass checks every peer and tells each one that answers where this machine is (`hello`,
+peer-only); the receiver also notes the address the call came from. A peer whose configured URL
+stops answering is tried at those, and one that answers as the right machine has its URL rewritten.
+A peer unreachable for `[sync] down_minutes` is raised as urgent until it's back, since its records
+can't be seen meanwhile. An area must run on this machine or a known peer.
+
 The areas list is the one thing every machine shares. Each remembers, per peer, the list they last
 agreed on; when its own differs (a tool or a hand edit) it pushes it each scheduler tick until the
 peer takes it. A peer takes it only if its own list hasn't changed since they agreed; if both
@@ -59,29 +66,35 @@ The window title shows the running version, so it's clear when an update has lan
 
 ## Item life
 
-Every item is in exactly one place, decided in one function (`attention`) that Today and the turn
-clock both read, and finishing or deleting it is the only way off Today for good:
+Nothing can be stuck: every open item, started or not, is someone's turn with a clock, and every
+clock but the user's (who sees it on Today) runs out within a day. Where each item stands is decided
+in one function (`attention`) that Today and the turn clock both read, and finishing or deleting it
+is the only way off Today for good:
 
-- **Up next** (unstarted): the backlog. Nobody's turn, no clock, off Today; GitHub issues nobody has
-  picked up are counted on Today's triage line. Giving it a turn (a session claims it, Tell
-  Claude, the queue, a question) starts it.
-- **In progress / in review** (started): always someone's turn with a clock (see Turns). The
-  user's turn is on Today, saying what it needs; anyone else's comes back when its time runs out.
-  Started work never goes back to up next: it's parked or closed.
-- **Done**: no turn.
+- **Open** (up next, in progress, in review): always someone's turn with a clock (see Turns). Up
+  next is work not started yet, not a backlog: new work is the user's turn ("start it, park it
+  until it can, or close it"), on Today; GitHub issues nobody has looked at are counted on Today's
+  triage line instead. Giving the agent the turn on up-next work starts it. Moving open work
+  between stages keeps its turn.
+- **Done**: no turn. A question asked on done work still shows on Today.
 
-The type (`Life` in `domain/life.rs`) makes other states unrepresentable: started work without a
-turn reads as the user's, and the user's turn always carries a need. A test walks every state
-forward through its clock and checks each ends on Today.
+The type (`Life` in `domain/life.rs`: `Open` or `Done`) makes other states unrepresentable: open
+work stored without a turn reads as the user's, saying what it needs. A test walks every open state
+forward through its clock and checks each ends on Today, with no step over a day unchecked.
 
-**Parking** puts started work off until something happens: a time, events (triggers in the
-schedules' format, e.g. another item's `item.stage` to done), or both, whichever comes first. It's
-a `later` turn, so it leaves Today and the board's columns for the Parked list, and comes back as
-the user's turn, or the agent's if the parking says so (it then needs a note). Its note (why it
-waits, what to do then) is kept on the turn and becomes the reason it came back, so the user's
-need or the agent's prompt says what to do. Use it for any fixed wait, like days for traffic to
-drain. With only events, `later_hours` is the backstop. Nothing parks for good: work nobody will pick up is
-closed or deleted.
+**Parking** is the one way to put work off, and only work that can't start or go on yet: never
+work that merely isn't due. It always says why (`why`), and is either:
+
+- **until a date**: back then (or sooner, on a `wake` event) as the user's turn, or the agent's if
+  the parking says so. Any date is fine: it's a concrete rule.
+- **until something happens**: `wake` events (triggers in the schedules' format, e.g. another
+  item's `item.stage` to done) bring it back as soon as they fire, and the agent looks again every
+  `later_hours` (at most a day) regardless, starting it or parking it again.
+
+It's a `later` turn, so it leaves Today and the board's columns for the Parked list, and its note
+becomes the reason it came back, so the user's need or the agent's prompt says what to do. The
+queue passes over parked up-next work. Nothing parks for good: work nobody will pick up is closed
+or deleted.
 
 ## Where things live
 
@@ -123,9 +136,10 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
   every `poll_minutes`, and at once when the window regains focus (at most every
   `focus_sync_seconds`), after which the screen reloads.
 - **GitHub issues**: open issues of the owners and repos in `[github.issues] watch` become items to
-  triage (up next, no holder), filed by `[github.areas]` like PRs and synced by the machine that
+  triage (up next, the user's turn, counted on Today's triage line), filed by `[github.areas]` like PRs and synced by the machine that
   runs that area, skipping `skip_labels`. No agent is involved. An issue one of the user's open PRs
-  closes is left to that PR's item, which notes it; if that PR closes unmerged, the issue comes
+  closes is left to that PR's item (only one open and tracked here), which notes it; if that PR
+  closes unmerged, the issue comes
   back. An item is closed only when `gh` says its issue closed, and reopened if the issue reopens.
   An agent's hand-made open item linking the issue becomes the synced one, whatever its id; a
   twin the sync made that nobody picked up goes. Since the item links the
@@ -200,11 +214,20 @@ stays approved there if it was here.
 
 ## Turns
 
-Every started item has a turn, `you` (with what's needed), `agent`, `others` (with who: reviewers,
-CI) or `later` (with what wakes it), and a clock, so nothing idles. Turns change only through
-`turns::pass`, which records why on the item's history and starts unstarted work; the UI and peers
-read the stored turn and never derive it. A wait that runs out goes only to the user or the agent,
-and the agent's runs out to the user, so every turn ends with the user.
+Every open item has a turn, `you` (with what's needed), `agent`, `others` (with who: reviewers,
+CI) or `later` (parked, with why), and a clock, so nothing idles. Turns change only through
+`turns::pass`, which records why on the item's history; the UI and peers read the stored turn and
+never derive it. The agent's and others' turns last at most `LONGEST_CHECK_HOURS` (24), whatever
+the config or a caller asks; so does parking without a date. A pass from the agent to itself keeps
+its clock, and so does others' turn changing only who it's on (a PR going from CI to reviewers), so
+neither can renew itself. A wait that runs out goes only to the user or the agent, and the agent's
+runs out to the user, so every turn ends with the user.
+
+Clocks never stop. Each tick keeps them first, before anything else can fail; a pause or an agent
+that can't run stops only prompting, so its turns still run out to the user. Ticks that keep
+failing (e.g. a broken `quarterdeck.toml`) raise an urgent card after five minutes, and GitHub syncs
+failing for `[github] failing_minutes` do too. Such cards come back if dismissed while the problem
+lasts (`lasting`).
 
 Nothing an agent or a sync sets up can stall an item: the agent always has somewhere to run, a
 session it can't resume is dropped, and a failure is tried again by itself or waits for what it
@@ -228,16 +251,18 @@ needs (a connection) to come back. The user's turn means only that the user is n
   `claude` exists and `[outage] probe` and `github_probe` answer; a
   failed check, or a run whose error says it never reached the agent, raises one urgent item and
   stops prompting, delivering answers and starting the queue. Agent's-turn items keep the turn
-  and an undelivered answer stays to go again. Checks repeat after `first_retry_seconds`, doubling
-  to `max_retry_seconds`, and at once when the window regains focus; the first good one clears the
-  item and gives waiting items a fresh `agent_hours`.
+  (their clocks still run out to the user) and an undelivered answer stays to go again. Checks
+  repeat after `first_retry_seconds`, doubling to `max_retry_seconds`, and at once when the window
+  regains focus; the first good one clears the item.
 - **The user's turn**: says what's needed (`pass_turn` requires `need`; system passes use their
   reason) and is reminded every `you_remind_hours`. Any reply (an answer, Tell Claude)
   passes the turn to the agent, unless another question on the item is open.
-- **Others' turn**: after `others_hours` it goes to the item's `then`, else `others_then` (`you`
-  by default; only `you` or `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved, draft or
+- **Others' turn**: after `others_hours` it goes to the item's `then`, else `others_then` (`agent`
+  by default, to check whether it's still waiting and wait again or carry on; only `you` or
+  `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved, draft or
   changes requested is the user's. GitHub never takes the turn from the agent.
-- **Later**: comes back when its time does, or sooner when an event in its `wake` fires.
+- **Later**: comes back when its time does, or sooner when an event in its `wake` fires (see
+  Parking).
 
 Limits live in `[turns]` (`set_turn_limits`).
 
@@ -275,9 +300,9 @@ removed once their item is done. Repos with no project get a run that can read C
 code.
 
 `[queue]` lists items Claude works on one at a time (`set_queue`, `get_queue`). The first not yet
-in review or done is current: when it's up next, Quarterdeck gives the agent the turn (which starts
-it) and delivers `prompts/queue.md` to it like a message; the next waits until it reaches
-review or done.
+in review or done, and not parked or waiting before it starts, is current: when it's up next,
+Quarterdeck gives the agent the turn (which starts it) and delivers `prompts/queue.md` to it like a
+message; the next waits until it reaches review or done.
 
 Default prompt files Quarterdeck wrote and nobody has edited follow newer defaults
 (`.quarterdeck-defaults` records what it wrote); edited ones, and `quarterdeck.toml`, are left alone.

@@ -12,7 +12,7 @@
 
   let { item, node, asks }: Props = $props();
 
-  const yours = $derived(item.turn === "you" && item.stage !== "done" && item.stage !== "up_next");
+  const yours = $derived(item.turn === "you" && item.stage !== "done");
   // A question asked on the item already says what's needed; the need repeats it.
   const need = $derived(yours && asks.length === 0 ? (item.need ?? item.stateLabel) : "");
 </script>

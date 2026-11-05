@@ -1,6 +1,7 @@
 //! While the agent can't run at all (offline, `claude` missing), its work waits instead of failing:
 //! one card says so, nothing is prompted, and Quarterdeck checks again, waiting longer each time.
-//! The first good check clears the card and gives every waiting item a fresh turn.
+//! The first good check clears the card. Turn clocks keep running throughout, so work on the
+//! agent's turn still comes back to the user if the outage outlasts it.
 
 use chrono::{Duration, Utc};
 use tauri::{AppHandle, Manager as _};
@@ -9,12 +10,10 @@ use tokio::sync::Mutex;
 use crate::app::App;
 use crate::claude::reach;
 use crate::config::settings::Settings;
-use crate::domain::turn::Turn;
 use crate::domain::urgent::Urgent;
 use crate::error::AppResult;
 use crate::notify;
-use crate::store::{Db, items, meta, urgent};
-use crate::turns::{self, Clock};
+use crate::store::{Db, meta, urgent};
 
 const SINCE: &str = "outage.since";
 const NEXT: &str = "outage.next_check";
@@ -42,7 +41,7 @@ pub async fn agent_up(handle: &AppHandle, settings: &Settings, now: bool) -> App
         return Ok(false);
     }
     match reach::check(command, &settings.outage).await {
-        None if down => recover(db, settings).await.map(|()| true),
+        None if down => recover(db).await.map(|()| true),
         None => Ok(true),
         Some(why) => report(handle, settings, &why).await.map(|()| false),
     }
@@ -99,19 +98,14 @@ async fn raise_card(db: &Db, settings: &Settings, why: &str) -> AppResult<()> {
     meta::set_text(db, CARD, &id.to_string()).await
 }
 
-/// Clears the card, and gives items waiting on the agent a fresh turn, as the outage used theirs.
-async fn recover(db: &Db, settings: &Settings) -> AppResult<()> {
+/// Clears the card. Clocks aren't renewed: an outage that keeps coming back must not keep work
+/// from ever reaching the user.
+async fn recover(db: &Db) -> AppResult<()> {
     if let Some(id) = meta::text(db, CARD).await?.and_then(|c| c.parse().ok()) {
         urgent::dismiss(db, id).await?;
     }
     for key in [SINCE, NEXT, GAP, CARD] {
         meta::forget(db, key).await?;
-    }
-    let clock = Clock::now(&settings.turns);
-    for item in items::list(db).await? {
-        if item.is_turn(Turn::Agent) {
-            turns::reset_clock(db, &item.id, clock.deadline(Turn::Agent)?).await?;
-        }
     }
     Ok(())
 }

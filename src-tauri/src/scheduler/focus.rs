@@ -23,7 +23,7 @@ async fn sync_if_stale(handle: &AppHandle) -> AppResult<()> {
     let settings = handle.state::<App>().settings()?.github;
     let gap = Duration::seconds(settings.focus_sync_seconds);
     if settings.enabled && claim(handle, github::SOURCE, gap).await? {
-        spawn_github(handle);
+        spawn_github(handle, Duration::minutes(settings.failing_minutes));
     }
     Ok(())
 }

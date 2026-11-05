@@ -1,6 +1,6 @@
 //! Items the agent works on one at a time, in the order `[queue]` lists them. The first one not
 //! yet in review or done is current: it starts when it's up next, and the queue waits while it's in
-//! progress. Starting one gives the agent the turn and `prompts/queue.md`.
+//! progress. Up-next work that is parked or waiting can't start, so it's passed over until it can. Starting one gives the agent the turn and `prompts/queue.md`.
 
 use crate::domain::ask::Ask;
 use crate::domain::item::{Stage, WorkItem};
@@ -26,6 +26,8 @@ pub fn next<'a>(queue: &[String], items: &'a [WorkItem]) -> Next<'a> {
         };
         match item.stage() {
             Stage::InReview | Stage::Done => {}
+            // Parked or waiting before it starts: it can't start yet, so the queue goes on.
+            Stage::UpNext if item.is_turn(Turn::Later) || item.is_turn(Turn::Others) => {}
             Stage::UpNext => return Next::Start(item),
             Stage::InProgress => return Next::Wait(item),
         }
@@ -79,6 +81,20 @@ mod tests {
         assert!(matches!(next(&ids(&["d", "b"]), &all), Next::Wait(i) if i.id == "d"));
         assert!(matches!(next(&ids(&["a"]), &all), Next::Finished));
         assert!(matches!(next(&[], &all), Next::Finished));
+        let parked = WorkItem {
+            life: crate::domain::life::Life::open_as(
+                crate::domain::life::Phase::UpNext,
+                crate::domain::life::Whose::Later {
+                    then: None,
+                    wake: Vec::new(),
+                    note: Some("needs the new API".to_owned()),
+                },
+                None,
+            ),
+            ..item("p", Stage::UpNext)
+        };
+        let with_parked = [parked, item("c", Stage::UpNext)];
+        assert!(matches!(next(&ids(&["p", "c"]), &with_parked), Next::Start(i) if i.id == "c"));
     }
 
     #[tokio::test]

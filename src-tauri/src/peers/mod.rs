@@ -3,9 +3,11 @@
 //! The one thing every machine shares is the areas list ([`areas`]), which says where schedules live
 //! ([`handoff`]).
 
+pub mod addresses;
 pub mod areas;
 pub mod client;
 pub mod handoff;
+pub mod health;
 pub mod reach;
 pub mod server;
 

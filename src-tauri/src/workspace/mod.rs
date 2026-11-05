@@ -139,7 +139,7 @@ mod tests {
             id: id.to_owned(),
             title: "t".to_owned(),
             state_label: String::new(),
-            life: crate::domain::life::Life::Unstarted,
+            life: crate::domain::life::Life::not_started(),
             status: None,
             area: "projects".to_owned(),
             link: Some(link.to_owned()),

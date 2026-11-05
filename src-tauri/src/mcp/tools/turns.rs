@@ -11,18 +11,20 @@ use crate::error::{AppError, AppResult};
 use crate::store::items;
 use crate::turns::{self, Clock, Pass};
 
-const PASS: &str = "Hands an item's turn on, saying what you did. Every started item is someone's \
-turn with a clock on it, so nothing waits forever; passing the turn on an up-next item starts it. \
-`to`: `agent` to carry on yourself (Quarterdeck prompts you again; the clock doesn't restart), \
-`others` when it waits on reviewers, CI or another team (say who in `waiting_on`; it comes back \
-after a while, to `then` if given: `you` or `agent`), `you` when the user must decide or act, \
-`later` to put it off until `until` (to park until an event, use park_item). `did` is required: \
+const PASS: &str = "Hands an item's turn on, saying what you did. Every open item, started or not, \
+is someone's turn with a clock on it, so nothing waits forever; giving the agent the turn on an \
+up-next item starts it. `to`: `agent` to carry on yourself (Quarterdeck prompts you again; the \
+clock doesn't restart), `others` when it waits on reviewers, CI or another team (say who in \
+`waiting_on`; it's checked again within a day: by `then`, `agent` by default, or `you`), `you` \
+when the user must decide or act. Neither the agent's nor others' turn can last over a day. To put \
+work off until it can start, use park_item. `did` is required: \
 one line on what you did or why you stopped. Passing to `you` also needs `need`: one line on \
 exactly what you need from them, e.g. \"Close #59 and decide the v1 version (#73)\". Today shows \
 it as the headline.";
 const LIMITS: &str = "Sets how long each turn lasts before Quarterdeck acts: agent_hours (then back \
 to the user), you_remind_hours (between reminders), others_hours (then to others_then), \
-later_hours, others_then (\"you\" or \"agent\"), quiet_minutes (how long an agent session \
+later_hours (how often work parked until something happens is checked), others_then (\"agent\" \
+to check or \"you\"); agent_hours, others_hours and later_hours are at most 24. quiet_minutes (how long an agent session \
 outside Quarterdeck may go quiet before it's prompted), and failure_retries (how many times in a \
 row a failed run is tried again by itself before it goes to the user). Only the fields you pass change.";
 
@@ -57,6 +59,11 @@ async fn pass(ctx: Ctx, args: PassArgs) -> AppResult<()> {
     if args.to == Turn::You && needs.is_empty() {
         return Err(AppError::BadInput(
             "say what you need from the user in `need`".to_owned(),
+        ));
+    }
+    if args.to == Turn::Later {
+        return Err(AppError::BadInput(
+            "to put it off, use park_item, which says why and when it comes back".to_owned(),
         ));
     }
     if matches!(args.then, Some(Turn::Others | Turn::Later)) {

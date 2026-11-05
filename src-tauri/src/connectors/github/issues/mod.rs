@@ -19,11 +19,21 @@ use crate::error::AppResult;
 use crate::store::{Db, items};
 use fetch::Issue;
 
-/// Each issue one of the user's open PRs closes, with that PR.
-fn covering(prs: &[Pr]) -> HashMap<String, String> {
-    prs.iter()
+/// Each issue one of the user's open PRs closes, with that PR. Only a PR with an open, visible
+/// item here stands for an issue: one ignored, synced elsewhere, deleted or marked done here would
+/// leave the issue with nothing standing for it.
+async fn covering(db: &Db, prs: &[Pr]) -> AppResult<HashMap<String, String>> {
+    let tracked: HashSet<String> = items::list(db)
+        .await?
+        .into_iter()
+        .filter(|i| i.source == PR_SOURCE && i.stage() != Stage::Done)
+        .filter_map(|i| i.external_id)
+        .collect();
+    Ok(prs
+        .iter()
+        .filter(|pr| tracked.contains(&pr_external_id(pr)))
         .flat_map(|pr| pr.closes.iter().map(|i| (i.clone(), pr_external_id(pr))))
-        .collect()
+        .collect())
 }
 
 fn wanted(all: &Settings, issue: &Issue) -> bool {
@@ -48,7 +58,7 @@ pub async fn sync(db: &Db, all: &Settings, prs: &[Pr]) -> AppResult<()> {
         return Ok(());
     }
     let issues = fetch::open_issues(&all.github.issues.watch).await?;
-    let covered = covering(prs);
+    let covered = covering(db, prs).await?;
     let now = Utc::now();
     let mut open = HashSet::new();
     for issue in issues.iter().filter(|i| wanted(all, i)) {

@@ -19,10 +19,6 @@ pub async fn advance(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
     let Next::Start(item) = queue::next(&settings.queue.items, &all) else {
         return Ok(());
     };
-    // Another machine runs this area's agents.
-    if settings.node_for(&item.area) != settings.node {
-        return Ok(());
-    }
     let message = render(&app.config, Prompt::Queue, &[])?;
     queue::start(&app.db, item, &message, Clock::now(&settings.turns)).await
 }

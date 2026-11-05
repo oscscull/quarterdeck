@@ -53,7 +53,7 @@ pub const fn back_to(then: Option<Turn>, default: Turn) -> Turn {
 pub fn back_from_later(note: Option<&str>) -> String {
     note.map_or_else(
         || "back from later: pick it up, put it off again, or close it".to_owned(),
-        |n| format!("back from parking: {n}"),
+        |n| format!("back from parking ({n}): start it if it can start now, else park it again"),
     )
 }
 
@@ -75,9 +75,9 @@ fn agent(work: Work, late: bool) -> Due {
     }
 }
 
-/// What an active item's clock calls for. Unstarted and done work has no clock.
+/// What an open item's clock calls for. Done work has no clock.
 pub fn due(item: &WorkItem, work: Work, limits: &TurnSettings, now: DateTime<Utc>) -> Due {
-    let Some(active) = item.life.active() else {
+    let Some(active) = item.life.open() else {
         return Due::Wait;
     };
     let Some(until) = active.until else {
@@ -90,7 +90,10 @@ pub fn due(item: &WorkItem, work: Work, limits: &TurnSettings, now: DateTime<Utc
         Whose::You { .. } => Due::Remind,
         Whose::Others { waiting_on, then } => Due::PassTo {
             to: back_to(*then, limits.others_then),
-            why: format!("waited {}h on {waiting_on}", limits.others_hours),
+            why: format!(
+                "waited a day on {waiting_on}: check whether it's still waiting, and wait again \
+                 or carry on"
+            ),
         },
         Whose::Later { then, note, .. } => Due::PassTo {
             to: back_to(*then, Turn::You),
@@ -108,7 +111,7 @@ mod tests {
 
     fn item(whose: Whose, until: Option<i64>) -> WorkItem {
         let until = until.map(|m| Utc::now() + Duration::minutes(m));
-        WorkItem::sample("a", Life::active_as(Phase::InReview, whose, until))
+        WorkItem::sample("a", Life::open_as(Phase::InReview, whose, until))
     }
 
     fn you() -> Whose {
@@ -131,11 +134,11 @@ mod tests {
     const IDLE: Work = Work::Idle;
 
     #[test]
-    fn only_active_work_has_a_clock() {
+    fn only_open_work_has_a_clock() {
         assert_eq!(check(&item(you(), None), IDLE), Due::StartClock);
-        for life in [Life::Unstarted, Life::Done] {
-            assert_eq!(check(&WorkItem::sample("a", life), IDLE), Due::Wait);
-        }
+        let new = WorkItem::sample("a", Life::not_started());
+        assert_eq!(check(&new, IDLE), Due::StartClock);
+        assert_eq!(check(&WorkItem::sample("a", Life::Done), IDLE), Due::Wait);
     }
 
     #[test]
@@ -157,13 +160,18 @@ mod tests {
     fn waits_end_and_the_user_is_reminded() {
         assert_eq!(check(&item(you(), Some(-1)), IDLE), Due::Remind);
         assert_eq!(check(&item(you(), Some(60)), IDLE), Due::Wait);
-        assert_eq!(
+        assert!(matches!(
             check(&item(others(None), Some(-1)), IDLE),
-            Due::PassTo {
-                to: Turn::You,
-                why: "waited 24h on CI".to_owned()
-            }
-        );
+            Due::PassTo { to: Turn::Agent, why } if why.starts_with("waited a day on CI")
+        ));
+        let to_you = TurnSettings {
+            others_then: Turn::You,
+            ..TurnSettings::default()
+        };
+        assert!(matches!(
+            due(&item(others(None), Some(-1)), IDLE, &to_you, Utc::now()),
+            Due::PassTo { to: Turn::You, .. }
+        ));
         assert!(matches!(
             check(&item(others(Some(Turn::Agent)), Some(-1)), IDLE),
             Due::PassTo {

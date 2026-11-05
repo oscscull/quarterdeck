@@ -2,8 +2,8 @@ enum Stage  { up_next, in_progress, in_review, done }
 # `proceeding` is retired and unread. Removing it makes Based rebuild the table, which breaks
 # other tables' foreign keys on SQLite.
 enum Status { decision, review, ci, ci_failed, dependency, approved, proceeding, queued }
-# Whose move it is on an item. An item has one exactly while it's in progress or in review: none
-# before it starts (up next) or once it's done.
+# Whose move it is on an item. Every open item (up next, in progress, in review) has one; done
+# items have none. Open rows stored without one read as the user's turn.
 enum Turn   { you, agent, others, later }
 
 # A piece of work. `id` is a ticket key (JD-104), a PR (app#12) or a made-up one (B-3).

@@ -35,22 +35,26 @@ pub async fn delete_item(app: State<'_, App>, id: String) -> AppResult<()> {
 /// When parked work comes back, why, and who picks it up.
 #[derive(Debug, serde::Deserialize)]
 pub struct ParkRequest {
-    /// RFC 3339.
-    until: String,
+    /// RFC 3339. Unset, it waits for what `why` says, which the agent checks.
+    until: Option<String>,
     why: Option<String>,
     /// The user (unset) or the agent.
     then: Option<Turn>,
 }
 
-/// Parks started work until the time asked, with the user's reason if they gave one.
+/// Parks work until the time asked, or until what `why` says happens, with the user's reason.
 #[tauri::command]
 pub async fn park_item(app: State<'_, App>, id: String, park: ParkRequest) -> AppResult<()> {
     let ParkRequest { until, why, then } = park;
-    let until = chrono::DateTime::parse_from_rfc3339(&until)
-        .map_err(|e| crate::error::AppError::BadInput(format!("'{until}' is not a time: {e}")))?
-        .with_timezone(&Utc);
+    let until = until
+        .map(|u| {
+            chrono::DateTime::parse_from_rfc3339(&u)
+                .map(|t| t.with_timezone(&Utc))
+                .map_err(|e| crate::error::AppError::BadInput(format!("'{u}' is not a time: {e}")))
+        })
+        .transpose()?;
     let parking = Parking {
-        until: Some(until),
+        until,
         wake: Vec::new(),
         why,
         then,

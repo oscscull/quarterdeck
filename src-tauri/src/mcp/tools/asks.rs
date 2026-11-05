@@ -26,7 +26,7 @@ pub fn tools() -> Vec<Tool> {
         async_tool(
             "add_ask",
             "Asks the user something about an item: a design fork, a question you can't answer. \
-             It makes the item the user's turn (starting it, if it was up next), with the question \
+             It makes the item the user's turn, with the question \
              as what's needed, and appears on Today if the item ranks high enough. Put the question in one \
              line and the background in `context`. Offer `options` when the answer is a choice \
              (e.g. [\"Yes\", \"No\"]); they can always write an answer instead. Quarterdeck resumes \

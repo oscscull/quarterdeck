@@ -42,9 +42,10 @@ export interface WorkItem {
   rank: number;
 }
 
-/** What parking sends: when it's back (RFC 3339), why, and who picks it up then. */
+/** What parking sends: why, and when it's back (RFC 3339) and to whom, or no date when it waits for
+ * something to happen, which the agent checks. */
 export interface Parking {
-  until: string;
+  until: string | null;
   why: string | null;
   then: "you" | "agent";
 }
