@@ -15,10 +15,10 @@ pub struct TurnSettings {
     pub you_remind_hours: i64,
     /// Waiting on reviewers, CI or another team before the turn comes back.
     pub others_hours: i64,
-    /// Put off with no time given.
+    /// How often work parked until something happens (rather than until a date) is checked.
     pub later_hours: i64,
-    /// Who gets the turn when others' wait runs out, unless the item says otherwise: `you` or
-    /// `agent`, so a wait never hands on to another wait.
+    /// Who gets the turn when others' wait runs out, unless the item says otherwise: `agent`, to
+    /// check whether it's still waiting, or `you`. Never another wait.
     pub others_then: Turn,
     /// How long an agent session working outside Quarterdeck can go quiet before it's prompted.
     pub quiet_minutes: i64,
@@ -43,8 +43,8 @@ impl Default for TurnSettings {
             agent_hours: 4,
             you_remind_hours: 24,
             others_hours: 24,
-            later_hours: 72,
-            others_then: Turn::You,
+            later_hours: 24,
+            others_then: Turn::Agent,
             quiet_minutes: 45,
             failure_retries: 2,
         }
@@ -63,25 +63,36 @@ pub struct TurnChange {
     pub failure_retries: Option<u32>,
 }
 
+/// The longest anything but the user's turn may go before it's looked at again. Not a setting: it's
+/// the guarantee that nothing waits unchecked for more than a day.
+pub const LONGEST_CHECK_HOURS: i64 = 24;
+
 /// The most a failed run is tried again in a row.
 const MAX_RETRIES: u32 = 10;
 
-/// The longest any turn may last: a year.
+/// The longest the user may go between reminders: a year.
 const MAX_TURN_HOURS: i64 = 24 * 365;
 
 impl TurnChange {
-    /// Refuses lengths that are zero, negative or over a year.
+    /// Refuses lengths that are zero or negative, waits over a day and reminders over a year.
     pub fn check(&self) -> AppResult<()> {
-        let hours = [
-            self.agent_hours,
-            self.you_remind_hours,
-            self.others_hours,
-            self.later_hours,
-        ];
-        let in_range = |h: &i64| (1..=MAX_TURN_HOURS).contains(h);
-        if !hours.iter().flatten().all(in_range) {
+        let waits = [self.agent_hours, self.others_hours, self.later_hours];
+        if !waits
+            .iter()
+            .flatten()
+            .all(|h| (1..=LONGEST_CHECK_HOURS).contains(h))
+        {
             return Err(AppError::BadInput(format!(
-                "turn lengths must be between 1 and {MAX_TURN_HOURS} hours"
+                "agent_hours, others_hours and later_hours must be between 1 and \
+                 {LONGEST_CHECK_HOURS}: nothing waits unchecked for more than a day"
+            )));
+        }
+        if self
+            .you_remind_hours
+            .is_some_and(|h| !(1..=MAX_TURN_HOURS).contains(&h))
+        {
+            return Err(AppError::BadInput(format!(
+                "you_remind_hours must be between 1 and {MAX_TURN_HOURS}"
             )));
         }
         if matches!(self.others_then, Some(Turn::Others | Turn::Later)) {

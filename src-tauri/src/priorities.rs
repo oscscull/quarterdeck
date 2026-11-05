@@ -85,8 +85,8 @@ mod tests {
     use crate::domain::life::{Life, Phase};
 
     fn item(id: &str, whose: Option<Whose>) -> WorkItem {
-        let life = whose.map_or(Life::Unstarted, |w| {
-            Life::active_as(Phase::InReview, w, None)
+        let life = whose.map_or_else(Life::not_started, |w| {
+            Life::open_as(Phase::InReview, w, None)
         });
         WorkItem::sample(id, life)
     }
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_users_turns_and_questions_in_rank_order() {
+    fn the_users_turns_and_every_question_in_rank_order() {
         let others = Whose::Others {
             waiting_on: "Sam".to_owned(),
             then: None,
@@ -132,7 +132,13 @@ mod tests {
         let asks = [ask(7, "asked"), ask(8, "shipped")];
         assert_eq!(
             kinds(&priorities(&items, &asks)),
-            ["mine: Merge it?", "ask7", "ready: Pick a name"]
+            [
+                "mine: Merge it?",
+                "ask7",
+                "someday: Not started: start it, park it until it can, or close it",
+                "ready: Pick a name",
+                "ask8"
+            ]
         );
     }
 

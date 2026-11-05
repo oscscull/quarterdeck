@@ -56,6 +56,8 @@ node = "home-mac"
 [github]
 enabled = true
 poll_minutes = 5
+# Syncs failing this long (e.g. `gh` logged out) are raised as urgent until one works.
+failing_minutes = 60
 # Coming back to Quarterdeck's window syncs at once (e.g. right after you merge a PR in the browser),
 # unless a sync ran within this many seconds.
 focus_sync_seconds = 30
@@ -146,24 +148,31 @@ port = 4791
 lan = false
 # Peers must send this. Made on first start when empty.
 token = ""
+# A peer that can't be reached for this long is raised as urgent until it's back, since its items
+# can't be seen from here. Peers tell each other where they are, so one whose address changed is
+# found again once it can reach this machine.
+down_minutes = 30
 
 # [[sync.peers]]
 # name = "home-mac"
 # url = "http://Home-Mac.local:4791"     # `scutil --get LocalHostName` on that Mac, plus .local
 # token = "the token from home-mac's quarterdeck.toml"
 
-# Every item in flight has a turn: yours, the agent's, others' (reviewers, CI) or later. Each has a
-# clock, so nothing sits forever. The agent's turn ends when it hands it on, or after agent_hours
-# (back to you). Your turn reminds you every you_remind_hours. Others' turn comes back after
-# others_hours, to others_then ("you" or "agent") unless the item says otherwise. An agent session
+# Every open item, started or not, has a turn: yours, the agent's, others' (reviewers, CI) or later
+# (parked). Each has a clock, so nothing sits forever. The agent's turn ends when it hands it on, or
+# after agent_hours (back to you). Your turn reminds you every you_remind_hours. Others' turn comes
+# back after others_hours, to others_then ("agent" checks whether it's still waiting, or "you")
+# unless the item says otherwise. Work parked until something happens (not until a date) goes to
+# the agent every later_hours to check. agent_hours, others_hours and later_hours are at most 24:
+# nothing waits unchecked for more than a day. An agent session
 # working outside Quarterdeck that goes quiet for quiet_minutes is prompted to carry on. A run that
 # fails is tried again by itself, in a new session, failure_retries times in a row before it's yours.
 [turns]
 agent_hours = 4
 you_remind_hours = 24
 others_hours = 24
-later_hours = 72
-others_then = "you"
+later_hours = 24
+others_then = "agent"
 quiet_minutes = 45
 failure_retries = 2
 

@@ -20,7 +20,7 @@ fn pass_for(owned: &Owned) -> Pass {
 /// A PR that ended has no turn to follow.
 pub async fn follow(db: &Db, item_id: &str, owned: &Owned, clock: Clock<'_>) -> AppResult<()> {
     let item = items::get(db, item_id).await?;
-    let Some(active) = item.life.active() else {
+    let Some(active) = item.life.open() else {
         return Ok(());
     };
     let pass = pass_for(owned);

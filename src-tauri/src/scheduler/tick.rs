@@ -5,6 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 use tauri::{AppHandle, Manager as _};
 
 use super::due::{Plan, plan};
+use super::keeper::Keeping;
 use crate::app::App;
 use crate::config::settings::Settings;
 use crate::config::{pause, schedules};
@@ -27,10 +28,36 @@ struct Window {
     now: DateTime<Utc>,
 }
 
+/// Clocks go first and run whatever else happens: a pause, an agent that can't run or a failing
+/// step later in the tick can stop work starting, never a turn running out.
 pub async fn tick(handle: &AppHandle) -> AppResult<()> {
     let app = handle.state::<App>();
     let settings = app.settings()?;
-    let raised = app.take_inbox(&settings).await?;
+    let now = Utc::now();
+    let up = super::outage::agent_up(handle, &settings, false)
+        .await
+        .unwrap_or(false);
+    let paused = !matches!(pause::current(&app.config, now), Ok(None));
+    let keeping = Keeping {
+        settings: &settings,
+        prompting: up && !paused,
+    };
+    let kept = super::keeper::check(handle, keeping).await;
+    let rest = the_rest(handle, &settings, Agent { up, paused }).await;
+    kept.and(rest)
+}
+
+/// Whether the agent can run, and whether everything is paused.
+#[derive(Clone, Copy)]
+struct Agent {
+    up: bool,
+    paused: bool,
+}
+
+async fn the_rest(handle: &AppHandle, settings: &Settings, agent: Agent) -> AppResult<()> {
+    let Agent { up, paused } = agent;
+    let app = handle.state::<App>();
+    let raised = app.take_inbox(settings).await?;
     if raised > 0 {
         // Notifications are a courtesy; a failure must not stop the scheduler.
         drop(notify::send(
@@ -44,9 +71,12 @@ pub async fn tick(handle: &AppHandle) -> AppResult<()> {
     crate::alerts::check(handle).await?;
     let urgent_count = urgent::list(&app.db).await?.len();
     crate::desktop::tray::show_urgent(handle, urgent_count)?;
-    super::connectors::sync_if_due(handle, &settings).await?;
-    super::updates::check_if_due(handle, &settings).await?;
-    let up = deliver_if_up(handle, &settings).await?;
+    super::connectors::sync_if_due(handle, settings).await?;
+    super::updates::check_if_due(handle, settings).await?;
+    // Answers go out even while paused: the user just gave them.
+    if up {
+        super::answers::deliver(handle, settings).await?;
+    }
     // Cleanup only; a failed removal is retried next tick.
     drop(crate::workspace::sweep(
         &crate::store::items::list(&app.db).await?,
@@ -56,22 +86,19 @@ pub async fn tick(handle: &AppHandle) -> AppResult<()> {
     meta::set_time(&app.db, LAST_TICK, now).await?;
     // First launch has no history to catch up on; a pause means nothing runs or is missed.
     let Some(last) = last else { return Ok(()) };
-    super::sources::fire(handle, &settings, last, now).await?;
+    super::sources::fire(handle, settings, last, now).await?;
     // Events wait while the agent is down, so their runs start once it's back. While paused they
     // are handled and start nothing, so a pause drops them rather than saving them up.
     if up {
-        super::events::dispatch(handle, &settings).await?;
+        super::events::dispatch(handle, settings).await?;
     }
-    if pause::current(&app.config, now)?.is_some() {
+    if paused {
         return Ok(());
     }
-    // One item's failure mustn't stop the queue and schedules; it's reported after them.
-    let kept = super::keeper::check(handle, &settings, up).await;
     if up {
-        super::queue::advance(handle, &settings).await?;
+        super::queue::advance(handle, settings).await?;
     }
-    start_due(handle, &settings, Window { last, now }).await?;
-    kept
+    start_due(handle, settings, Window { last, now }).await
 }
 
 /// Starts the schedules run here whose crons came due in `w`.
@@ -83,16 +110,6 @@ async fn start_due(handle: &AppHandle, settings: &Settings, w: Window) -> AppRes
         }
     }
     Ok(())
-}
-
-/// Whether the agent can run, delivering answers if so. Answers go out even while paused: the user
-/// just gave them. While the agent can't run, its work waits: nothing is prompted or delivered.
-async fn deliver_if_up(handle: &AppHandle, settings: &Settings) -> AppResult<bool> {
-    let up = super::outage::agent_up(handle, settings, false).await?;
-    if up {
-        super::answers::deliver(handle, settings).await?;
-    }
-    Ok(up)
 }
 
 async fn consider(

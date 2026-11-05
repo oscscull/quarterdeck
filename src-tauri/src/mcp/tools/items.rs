@@ -18,25 +18,29 @@ const LIST_ITEMS: &str = "Work items (tickets, PRs, issues, personal projects) i
              first. `parked` lists only parked work (on a later turn).";
 const GET_ITEM: &str = "One item with its open asks and its history.";
 const CREATE_ITEM: &str = "Adds a work item to the bottom of the priorities. Use the ticket key as `key` when there \
-             is one (e.g. JD-104). Up next (the default) is unstarted backlog: nobody's turn, off \
-             Today. Work made in progress or in review starts as the user's turn; take it on with \
-             claim_item or hand it on with pass_turn. Returns the item's id.";
+             is one (e.g. JD-104). Every new item is the user's turn, on Today: up next (the \
+             default) asks them to start it, park it or close it. If it can start now, start it: \
+             take it on with claim_item or pass_turn to agent. If it can't start yet (it needs \
+             something that doesn't exist yet, or must wait for a date), park_item it saying why. \
+             Never leave work that can start sitting, and never park work only because it isn't \
+             due yet. Returns the item's id.";
 const UPDATE_ITEM: &str = "Changes an item. Only the fields you pass change. Keep `state_label` short and current, \
              e.g. \"waiting on review from Sam\". Set `status` to what it's waiting on, or \
              `clear_status` when it's moving again. Whose turn it is changes only through \
-             pass_turn. Started work can't go back to up next: park it or mark it done.";
+             pass_turn, and moving it between stages keeps its turn.";
 const DELETE_ITEM: &str = "Deletes an item with its asks and history.";
 const MOVE_ITEM: &str = "Moves an item to a position in the priorities, 1 being the top.";
-const PARK_ITEM: &str = "Parks started work until something happens: a time (`until`, RFC 3339), \
-             events (`wake`, triggers as in schedules, e.g. {\"on\": \"item.stage\", \"when\": \
-             {\"item\": \"app#9\", \"stage\": \"done\"}}), or both, whichever comes first. With only \
-             events, the configured later length is the backstop. Use it for any fixed wait (e.g. \
-             \"14 days for traffic to reach 0\"): don't leave such work on the user's or others' turn. \
-             It leaves Today for the Parked list (with a countdown) until then, then comes back as \
-             the user's turn, or the agent's with `then: agent`. `why` says what it waits for and what \
-             to do once it's back (required for the agent); it's repeated when it wakes. Nothing \
-             parks for good: close work nobody will pick up (update_item stage done). Unstarted work \
-             can't be parked; it's already off Today. `parked: false` brings it back now.";
+const PARK_ITEM: &str = "Parks work, started or not, that can't start or go on yet. Never for work \
+             that merely isn't due: work that can start, starts. `why` is required: what stops it \
+             now and what to do once it can. Either until a date (`until`, RFC 3339; e.g. \
+             \"restarts 1 Dec\", \"14 days for traffic to reach 0\"), when it comes back as the \
+             user's turn, or the agent's with `then: agent`; or, with no `until`, until something \
+             happens: `wake` events bring it back at once (triggers as in schedules, e.g. \
+             {\"on\": \"item.stage\", \"when\": {\"item\": \"app#9\", \"stage\": \"done\"}}), \
+             and the agent checks `why` at least daily regardless, starting it or parking it \
+             again. It leaves Today for the Parked list (with a countdown) meanwhile. Nothing parks \
+             for good: close work nobody will pick up (update_item stage done). `parked: false` \
+             brings it back now.";
 const ADD_NOTE: &str = "Adds a line to an item's history, e.g. \"opened PR #821\". Use for progress worth \
              remembering; the user sees it in the item's history.";
 
@@ -194,10 +198,11 @@ struct ParkArgs {
     /// Events that bring it back sooner.
     #[serde(default)]
     wake: Vec<OnEvent>,
-    /// What it waits for and what to do once it's back. Noted in its history and repeated when it
-    /// wakes.
+    /// Required: what stops it now and what to do once it can. Noted in its history and repeated
+    /// when it wakes.
     why: Option<String>,
-    /// Who picks it up once it's back: `you` (the default) or `agent`.
+    /// Who picks it up when it's back on its date: `you` (the default) or `agent`. Without a date
+    /// the agent checks it.
     then: Option<Turn>,
 }
 

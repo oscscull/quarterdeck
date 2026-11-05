@@ -15,6 +15,7 @@ mod devseed;
 mod domain;
 mod error;
 mod jobs;
+mod lasting;
 mod lifecycle;
 mod mcp;
 mod notify;

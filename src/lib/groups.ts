@@ -18,4 +18,4 @@ export const TURN_FILTERS: readonly { id: TurnFilter; label: CopyKey }[] = [
 ];
 
 export const matchesTurn = (item: WorkItem, filter: TurnFilter): boolean =>
-  filter === "all" || (isInFlight(item) && item.turn === filter);
+  filter === "all" || (item.stage !== "done" && item.turn === filter);

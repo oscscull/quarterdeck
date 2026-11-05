@@ -18,6 +18,8 @@
   const day = (d: Date): string =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+  // On a date, or when something happens, which the agent checks daily.
+  let kind = $state<"date" | "condition">("date");
   let until = $state(day(new Date(Date.now() + WEEK_MS)));
   let why = $state("");
   let then = $state<"you" | "agent">("you");
@@ -26,8 +28,8 @@
   async function park(): Promise<void> {
     try {
       // Comes back at the start of the chosen day.
-      const at = new Date(`${until}T09:00:00`).toISOString();
-      await route.park(node, id, { until: at, why: why.trim() || null, then });
+      const at = kind === "date" ? new Date(`${until}T09:00:00`).toISOString() : null;
+      await route.park(node, id, { until: at, why: why.trim(), then: kind === "date" ? then : "agent" });
       changed();
       onParked();
     } catch (e) {
@@ -39,18 +41,27 @@
 <form class="park" onsubmit={(e) => { e.preventDefault(); void park(); }}>
   <p class="hint">{t("park.hint")}</p>
   <label>
-    <span class="section-label">{t("park.until")}</span>
-    <input type="date" bind:value={until} min={day(new Date())} required />
-  </label>
-  <label>
     <span class="section-label">{t("park.why")}</span>
-    <input type="text" bind:value={why} placeholder={t("park.whyPlaceholder")} required={then === "agent"} />
+    <input type="text" bind:value={why} placeholder={t("park.whyPlaceholder")} required />
   </label>
   <fieldset>
-    <legend class="section-label">{t("park.then")}</legend>
-    <label class="choice"><input type="radio" bind:group={then} value="you" /> {t("park.thenYou")}</label>
-    <label class="choice"><input type="radio" bind:group={then} value="agent" /> {t("park.thenAgent")}</label>
+    <legend class="section-label">{t("park.until")}</legend>
+    <label class="choice"><input type="radio" bind:group={kind} value="date" /> {t("park.onDate")}</label>
+    <label class="choice"><input type="radio" bind:group={kind} value="condition" /> {t("park.onCondition")}</label>
   </fieldset>
+  {#if kind === "date"}
+    <label>
+      <span class="section-label">{t("park.backOn")}</span>
+      <input type="date" bind:value={until} min={day(new Date())} required />
+    </label>
+    <fieldset>
+      <legend class="section-label">{t("park.then")}</legend>
+      <label class="choice"><input type="radio" bind:group={then} value="you" /> {t("park.thenYou")}</label>
+      <label class="choice"><input type="radio" bind:group={then} value="agent" /> {t("park.thenAgent")}</label>
+    </fieldset>
+  {:else}
+    <p class="hint">{t("park.conditionHint")}</p>
+  {/if}
   {#if error}<p class="error">{error}</p>{/if}
   <div class="buttons">
     <button type="button" class="button-secondary" onclick={onCancel}>{t("item.cancel")}</button>

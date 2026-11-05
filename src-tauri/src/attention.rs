@@ -1,29 +1,34 @@
 //! Where each item stands with the user, decided in one place so Today and the turn clock can't
-//! disagree. Every item is in exactly one place, and finishing it (or deleting it) is the only way
-//! off Today for good: unstarted work waits in the backlog, the user's turns and questions are on
-//! Today, and anyone else's turn has a clock that brings it back (see `turns::due`).
+//! disagree. Every open item is someone's turn and finishing it (or deleting it) is the only way
+//! off Today for good: the user's turns, questions and issues to triage are on Today, and anyone
+//! else's turn has a clock no longer than a day that brings it back (see `turns::due`). There is
+//! no backlog: work nobody has started is the user's turn to start, park or close.
 
+use crate::connectors::github::issues;
 use crate::domain::item::WorkItem;
 use crate::domain::life::{Life, Whose};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Attention {
-    /// Not started: in Priorities and the board, not Today.
-    Backlog,
     /// The user's turn, or someone asked them something: on Today.
     Today,
-    /// The agent's, others' or a later turn: its clock brings it back to the user.
+    /// An issue nobody has looked at: on Today, counted on its triage line.
+    Triage,
+    /// The agent's, others' or a later turn: its clock brings it back.
     Returning,
     Closed,
 }
 
-/// Where `item` stands, `asked` being whether a question on it is open.
-pub const fn of(item: &WorkItem, asked: bool) -> Attention {
+/// Where `item` stands, `asked` being whether a question on it is open. A question is on Today
+/// even on done work, so it can't be lost.
+pub fn of(item: &WorkItem, asked: bool) -> Attention {
+    if asked {
+        return Attention::Today;
+    }
     match &item.life {
         Life::Done => Attention::Closed,
-        _ if asked => Attention::Today,
-        Life::Unstarted => Attention::Backlog,
-        Life::Active(a) => match a.whose {
+        Life::Open(_) if issues::untriaged(item) => Attention::Triage,
+        Life::Open(o) => match o.whose {
             Whose::You { .. } => Attention::Today,
             Whose::Agent | Whose::Others { .. } | Whose::Later { .. } => Attention::Returning,
         },
@@ -35,12 +40,12 @@ mod tests {
     use chrono::{Duration, Utc};
 
     use super::*;
-    use crate::config::turns::TurnSettings;
+    use crate::config::turns::{LONGEST_CHECK_HOURS, TurnSettings};
     use crate::domain::life::Phase;
     use crate::domain::trigger::OnEvent;
     use crate::domain::turn::Turn;
-    use crate::turns::Pass;
     use crate::turns::due::{Due, Work, due};
+    use crate::turns::{Clock, Pass};
 
     const THENS: [Option<Turn>; 5] = [
         None,
@@ -84,16 +89,13 @@ mod tests {
     fn every_life() -> Vec<Life> {
         let untils =
             [None, Some(-60), Some(60)].map(|m| m.map(|m| Utc::now() + Duration::minutes(m)));
-        let phases = [Phase::InProgress, Phase::InReview];
+        let phases = [Phase::UpNext, Phase::InProgress, Phase::InReview];
         let active = phases.into_iter().flat_map(|phase| {
             every_whose().into_iter().flat_map(move |whose| {
-                untils.map(|until| Life::active_as(phase, whose.clone(), until))
+                untils.map(|until| Life::open_as(phase, whose.clone(), until))
             })
         });
-        [Life::Unstarted, Life::Done]
-            .into_iter()
-            .chain(active)
-            .collect()
+        std::iter::once(Life::Done).chain(active).collect()
     }
 
     /// Lets time run on `item` with an agent that never hands over, returning where it settles.
@@ -104,25 +106,31 @@ mod tests {
             if place != Attention::Returning {
                 return place;
             }
-            now += Duration::days(800);
-            let Some(active) = item.life.active() else {
+            let Some(active) = item.life.open() else {
                 return place;
             };
+            let deadline = active.until.unwrap_or(now);
+            assert!(
+                deadline <= now + Duration::hours(LONGEST_CHECK_HOURS),
+                "{:?} waits over a day unchecked",
+                item.life
+            );
+            now = deadline.max(now) + Duration::seconds(1);
             let (whose, phase) = match due(&item, Work::Running, limits, now) {
                 Due::StartClock | Due::Remind | Due::Prompt => (active.whose.clone(), active.phase),
                 Due::PassTo { to, why } => (Pass::to(to, why).whose(), active.phase),
                 Due::Wait => panic!("{:?} waits forever", item.life),
             };
-            item.life = Life::active_as(phase, whose, Some(now + Duration::hours(1)));
+            let until = Clock { limits, now }.deadline(whose.turn()).unwrap();
+            item.life = Life::open_as(phase, whose, Some(until));
         }
         panic!("{:?} never came back", item.life)
     }
 
-    /// Where every open item must end up: on Today, unless it's unstarted and nobody asked.
+    /// Where every item must end up: on Today unless it's done and nobody asked anything.
     fn expected(life: &Life, asked: bool) -> Attention {
         match (life, asked) {
-            (Life::Done, _) => Attention::Closed,
-            (Life::Unstarted, false) => Attention::Backlog,
+            (Life::Done, false) => Attention::Closed,
             _ => Attention::Today,
         }
     }

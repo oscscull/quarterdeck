@@ -16,7 +16,7 @@ use crate::turns::{self, Clock, Pass};
 /// Who it goes back to and its parking note, if `event` wakes `item`. An item's own turn changes
 /// never wake it, so parking doesn't undo itself.
 fn woken_to(item: &WorkItem, event: &Fired) -> Option<(Turn, Option<String>)> {
-    let Whose::Later { then, wake, note } = &item.life.active()?.whose else {
+    let Whose::Later { then, wake, note } = &item.life.open()?.whose else {
         return None;
     };
     let own_turn = event.kind == "item.turn" && event.subject == item.id;
@@ -26,9 +26,6 @@ fn woken_to(item: &WorkItem, event: &Fired) -> Option<(Turn, Option<String>)> {
 
 pub async fn on_event(db: &Db, settings: &Settings, event: &Fired) -> AppResult<()> {
     for item in items::list(db).await? {
-        if settings.node_for(&item.area) != settings.node {
-            continue;
-        }
         let Some((to, note)) = woken_to(&item, event) else {
             continue;
         };
@@ -70,7 +67,7 @@ mod tests {
             wake,
             note: None,
         };
-        WorkItem::sample(id, Life::active_as(Phase::InProgress, whose, None))
+        WorkItem::sample(id, Life::open_as(Phase::InProgress, whose, None))
     }
 
     #[test]

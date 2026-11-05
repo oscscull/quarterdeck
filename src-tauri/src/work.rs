@@ -51,7 +51,7 @@ async fn update(
     let life = if input.stage == old.stage() {
         old.life.clone()
     } else {
-        lifecycle::moved(&old.life, input.stage, &input.state_label)?
+        lifecycle::moved(&old.life, input.stage, &input.state_label)
     };
     let mut item = WorkItem {
         id: old.id.clone(),
@@ -80,7 +80,7 @@ fn from_input(input: ItemInput) -> WorkItem {
         id: String::new(),
         title: input.title,
         state_label: input.state_label,
-        life: Life::Unstarted,
+        life: Life::not_started(),
         status: input.status,
         area: input.area,
         link: input.link.filter(|l| !l.trim().is_empty()),
@@ -98,8 +98,8 @@ fn diff(old: &WorkItem, new: &WorkItem) -> Vec<Change> {
     if old.stage() != new.stage() {
         changes.push(Change::Stage { stage: new.stage() });
     }
-    if old.turn().is_none()
-        && let Some(Whose::You { need }) = new.life.active().map(|a| &a.whose)
+    if old.life.whose() != new.life.whose()
+        && let Some(Whose::You { need }) = new.life.whose()
     {
         changes.push(Change::Turn {
             turn: Turn::You,
