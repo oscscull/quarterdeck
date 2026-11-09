@@ -51,7 +51,7 @@ The rest of the folder:
 - `prompts/`: what Claude is told for each built-in job. Edit one to change its behaviour.
 - `inbox/`, `pause.toml`: written by agents and the app; see the folder's `README.md`.
 
-Updates bring new prompts and settings but never rewrite your `quarterdeck.toml` or a prompt you've
+Updates bring new prompts and settings but don't rewrite your `quarterdeck.toml` or a prompt you've
 edited. To pick up a new setting, copy it from
 [the defaults](../src-tauri/defaults/config/quarterdeck.toml).
 
