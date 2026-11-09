@@ -55,6 +55,9 @@ pub enum SettingKey {
     /// Hand CI failures nobody is on to Claude (true/false).
     #[serde(rename = "github.fix_ci")]
     GithubFixCi,
+    /// Hand review comments to Claude, who fixes the clear ones and asks about the rest (true/false).
+    #[serde(rename = "github.fix_reviews")]
+    GithubFixReviews,
     /// Claude Code tools a CI fix may use, e.g. "Bash(gh pr checks:*)" (list of text).
     #[serde(rename = "github.fix_ci_tools")]
     GithubFixCiTools,
@@ -115,6 +118,7 @@ impl SettingKey {
             Self::GithubFocusSyncSeconds => "github.focus_sync_seconds",
             Self::GithubDefaultArea => "github.default_area",
             Self::GithubFixCi => "github.fix_ci",
+            Self::GithubFixReviews => "github.fix_reviews",
             Self::GithubFixCiTools => "github.fix_ci_tools",
             Self::GithubUpdateBehind => "github.update_behind",
             Self::GithubFixConflicts => "github.fix_conflicts",

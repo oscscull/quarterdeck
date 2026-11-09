@@ -2,6 +2,13 @@ If you changed files in a worktree, commit them before you hand the turn on, who
 to: finished work, work in progress before an ask, all of it. Quarterdeck only publishes commits, and
 if it finds uncommitted changes it hands the turn straight back to you to commit them.
 
+Before you hand anything to the user (pass_turn to `you`, add_ask, add_todo), check it isn't
+something you can do yourself now. Work you have the tools and access for is yours: a failing check
+to fix or re-run, a review comment with a clear fix, a conflict, a stale branch, a reply that only
+states facts. Do it, then hand on. The user gets only what needs them: a credential, login or
+payment; access you don't have; a judgement call (design, scope, priority, pushing back on a
+reviewer); something away from the computer; or a merge, release or message that's theirs to make.
+
 Every item has a turn, and while it's yours Quarterdeck keeps prompting you. Before you stop, hand
 it on with pass_turn on {{item}}, saying in `did` what you did in one line:
 - `agent` to carry on yourself in a fresh prompt,

@@ -80,7 +80,7 @@ pub async fn sync(handle: &AppHandle) -> AppResult<()> {
         open.insert(apply::external_id(pr));
         if let Some(area) = synced_here(&app.db, &all, pr).await? {
             let pr = prepared(pr, &all.github);
-            sync_pr(&app.db, &pr, (&area, &all.turns), now).await?;
+            sync_pr(&app.db, &pr, (&area, &all.turns, &all.github), now).await?;
         }
     }
     let unseen = apply::unseen(&app.db, &open).await?;
@@ -128,11 +128,11 @@ fn prepared(pr: &fetch::Pr, settings: &GithubSettings) -> fetch::Pr {
 async fn sync_pr(
     db: &Db,
     pr: &fetch::Pr,
-    (area, limits): (&str, &TurnSettings),
+    (area, limits, github): (&str, &TurnSettings, &GithubSettings),
     now: DateTime<Utc>,
 ) -> AppResult<()> {
     let ext = apply::external_id(pr);
-    let kinds = apply::apply(db, pr, (area, limits), now).await?;
+    let kinds = apply::apply(db, pr, (area, limits, github), now).await?;
     let item_id = items::by_external(db, SOURCE, &ext)
         .await?
         .map(|i| i.id)
@@ -203,7 +203,11 @@ mod tests {
         apply::apply(
             &db,
             &pr(2),
-            ("projects", &TurnSettings::default()),
+            (
+                "projects",
+                &TurnSettings::default(),
+                &GithubSettings::default(),
+            ),
             Utc::now(),
         )
         .await

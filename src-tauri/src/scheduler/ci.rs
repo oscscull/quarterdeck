@@ -43,7 +43,10 @@ pub async fn react(
             let ws = ws.filter(|w| w.holds(&session));
             Job::new("CI result", item.id, prompt, Thread::Resume(session)).in_workspace(ws)
         }
-        None if event.kind == EventKind::CiFailed.name() && settings.github.fix_ci && !covered => {
+        None if event.kind == EventKind::CiFailed.name()
+            && settings.github.fixes.ci
+            && !covered =>
+        {
             let session = ws
                 .as_ref()
                 .map_or_else(thread::fresh_session, Workspace::new_session);
@@ -56,7 +59,7 @@ pub async fn react(
     dispatch::run(
         handle,
         settings,
-        job.with_tools(&settings.github.fix_ci_tools),
+        job.with_tools(&settings.github.fixes.tools),
     )
     .await
 }

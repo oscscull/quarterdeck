@@ -70,7 +70,13 @@ self_review = []
 # claimed, Quarterdeck tells that Claude session, so agents never poll CI. When CI fails on a PR nobody
 # is on, and no ci_failed schedule covers it, Quarterdeck hands it to Claude (prompts/fix-ci.md).
 fix_ci = true
-fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)", "Bash(gh run rerun:*)"]
+# Review comments on a PR go to the Claude session on it, or, if nobody is on it and no
+# pr_new_comments schedule covers them, to a new one (prompts/address-review.md). Claude makes the
+# clear changes, replies with the commit, and asks you only about judgement calls. Requested changes
+# are Claude's turn, not yours, while this is on.
+fix_reviews = true
+# Tools those runs may use without asking (CI fixes and review comments).
+fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)", "Bash(gh run rerun:*)", "Bash(gh pr comment:*)"]
 # Where a repo only merges branches that are up to date, a PR that falls behind (say, while it waits
 # on review) has its branch updated by Quarterdeck (`gh pr update-branch`, no Claude). A PR that
 # starts conflicting goes to the Claude session on it, or, if nobody is on it, to a new one

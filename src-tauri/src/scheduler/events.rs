@@ -42,19 +42,25 @@ pub async fn dispatch(handle: &AppHandle, settings: &Settings) -> AppResult<()> 
             }
         }
         fired::handled(&app.db, event.id, &started).await?;
-        if !paused && super::ci::is_ci(&event) && settings.node_for(&event.area) == settings.node {
-            // A failed hand-off mustn't stop the other events; the item still shows CI's state.
-            drop(super::ci::react(handle, settings, &event, !matching.is_empty()).await);
-        }
-        if !paused
-            && super::branch::is_branch(&event)
-            && settings.node_for(&event.area) == settings.node
-        {
-            // Likewise: the item still shows the branch's state.
-            drop(super::branch::react(handle, settings, &event, !matching.is_empty()).await);
+        if !paused && settings.node_for(&event.area) == settings.node {
+            react(handle, settings, &event, !matching.is_empty()).await;
         }
     }
     Ok(())
+}
+
+/// Quarterdeck's own reactions to PR events, where no schedule covers them. A failed one mustn't
+/// stop the other events: the item still shows GitHub's state, and its turn's clock still runs.
+async fn react(handle: &AppHandle, settings: &Settings, event: &Fired, covered: bool) {
+    if super::ci::is_ci(event) {
+        drop(super::ci::react(handle, settings, event, covered).await);
+    }
+    if super::branch::is_branch(event) {
+        drop(super::branch::react(handle, settings, event, covered).await);
+    }
+    if super::review::is_review(event) {
+        drop(super::review::react(handle, settings, event, covered).await);
+    }
 }
 
 /// Enabled schedules run here, in the event's area, with a trigger the event matches.

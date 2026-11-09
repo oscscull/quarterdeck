@@ -17,6 +17,7 @@ mod keeper;
 mod outage;
 mod peers;
 mod queue;
+mod review;
 mod run_turn;
 mod sources;
 mod stalled;

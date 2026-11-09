@@ -91,7 +91,7 @@ async fn fix_conflicts(handle: &AppHandle, settings: &Settings, event: &Fired) -
     dispatch::run(
         handle,
         settings,
-        job.with_tools(&settings.github.fix_ci_tools),
+        job.with_tools(&settings.github.fixes.tools),
     )
     .await
 }

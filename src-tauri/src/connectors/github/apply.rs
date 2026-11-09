@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 use super::fate::Fate;
 use super::fetch::Pr;
 use super::snapshot::{self, Snapshot};
-use super::turn;
+use super::turn::{self, Waits};
+use crate::config::github::GithubSettings;
 use crate::config::turns::TurnSettings;
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, WorkItem};
@@ -48,11 +49,15 @@ fn input(id: String, s: &Snapshot, area: String, link: Option<String>) -> ItemIn
 pub async fn apply(
     db: &Db,
     pr: &Pr,
-    (area, limits): (&str, &TurnSettings),
+    (area, limits, github): (&str, &TurnSettings, &GithubSettings),
     now: DateTime<Utc>,
 ) -> AppResult<Vec<EventKind>> {
     let ext = external_id(pr);
     let new = snapshot::of(pr);
+    let waits = Waits {
+        owned: &new.owned,
+        claude_fixes: snapshot::claude_fixes(&new, github),
+    };
     let old: Option<Snapshot> = sync_state::get(db, SOURCE, &ext)
         .await?
         .and_then(|json| serde_json::from_str(&json).ok());
@@ -62,11 +67,11 @@ pub async fn apply(
     match existing {
         None => {
             let id = create(db, pr, area, now).await?;
-            turn::follow(db, &id, &new.owned, Clock { limits, now }).await?;
+            turn::follow(db, &id, waits, Clock { limits, now }).await?;
         }
         Some(item) if old.as_ref().map(|o| &o.owned) != Some(&new.owned) => {
             let id = work::save(db, input(item.id, &new, item.area, item.link), now).await?;
-            turn::follow(db, &id, &new.owned, Clock { limits, now }).await?;
+            turn::follow(db, &id, waits, Clock { limits, now }).await?;
         }
         Some(_) => {}
     }
@@ -166,13 +171,22 @@ mod tests {
         }
     }
 
+    /// Applies `pr` in the `work` area with default settings.
+    async fn sync(db: &Db, pr: &Pr) -> AppResult<Vec<EventKind>> {
+        let github = GithubSettings::default();
+        apply(
+            db,
+            pr,
+            ("work", &TurnSettings::default(), &github),
+            Utc::now(),
+        )
+        .await
+    }
+
     #[tokio::test]
     async fn syncs_keep_edits_until_github_changes() {
         let db = Db::in_memory().await;
-        let limits = TurnSettings::default();
-        apply(&db, &pr(0), ("work", &limits), Utc::now())
-            .await
-            .unwrap();
+        sync(&db, &pr(0)).await.unwrap();
         let waiting = items::get(&db, "app#7").await.unwrap();
         let reviewers = crate::domain::life::Whose::Others {
             waiting_on: "reviewers".to_owned(),
@@ -182,9 +196,7 @@ mod tests {
         let mut edited = items::get(&db, "app#7").await.unwrap();
         edited.state_label = "Sam is on holiday".to_owned();
         items::save(&db, &edited).await.unwrap();
-        let events = apply(&db, &pr(1), ("work", &limits), Utc::now())
-            .await
-            .unwrap();
+        let events = sync(&db, &pr(1)).await.unwrap();
         assert_eq!(events, [EventKind::PrNewComments]);
         assert_eq!(
             items::get(&db, "app#7").await.unwrap().state_label,
@@ -212,7 +224,6 @@ mod tests {
     #[tokio::test]
     async fn a_pr_quarterdeck_opened_reports_ci_that_failed_before_the_first_sync() {
         let db = Db::in_memory().await;
-        let limits = TurnSettings::default();
         let failing = Pr {
             ci: Some("FAILURE".to_owned()),
             ..pr(0)
@@ -221,7 +232,7 @@ mod tests {
             number: 8,
             ..failing.clone()
         };
-        let quiet = apply(&db, &fresh, ("work", &limits), Utc::now()).await;
+        let quiet = sync(&db, &fresh).await;
         assert_eq!(quiet.unwrap(), []);
         let input = ItemInput {
             id: "app#3".to_owned(),
@@ -239,7 +250,7 @@ mod tests {
             ..items::get(&db, "app#3").await.unwrap()
         };
         items::save(&db, &adopted).await.unwrap();
-        let events = apply(&db, &failing, ("work", &limits), Utc::now()).await;
+        let events = sync(&db, &failing).await;
         assert_eq!(events.unwrap(), [EventKind::CiFailed]);
     }
 }
