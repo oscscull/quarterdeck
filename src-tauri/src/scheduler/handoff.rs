@@ -1,6 +1,7 @@
 //! After Claude finishes in a worktree, Quarterdeck does the GitHub side: it pushes the commits and,
 //! for an issue, opens the PR and makes the item that PR's. Nothing is published while a question
-//! on the item is open, since the work is waiting on the user. When it can't, see `unpublished`.
+//! on the item is open, since the work is waiting on the user, nor while the worktree has changes no
+//! commit holds (see `uncommitted`). When it can't, see `unpublished`.
 
 use chrono::{DateTime, Utc};
 use tauri::{AppHandle, Manager as _};
@@ -21,13 +22,22 @@ pub async fn after_run(
     limits: &TurnSettings,
 ) {
     let app = handle.state::<App>();
+    let now = Utc::now();
+    match super::uncommitted::handle(&app.db, (item_id, ws), limits, now).await {
+        Ok(false) => {}
+        Ok(true) => return,
+        Err(problem) => {
+            // The commits can still go out; the notification is a courtesy.
+            let title = format!("Couldn't check Claude's worktree on {item_id}");
+            drop(notify::send(handle, &title, &problem.to_string()));
+        }
+    }
     let waiting = asks::for_item(&app.db, item_id)
         .await
         .map_or(true, |open| !open.is_empty());
     if waiting {
         return;
     }
-    let now = Utc::now();
     let recorded = match workspace::publish(ws).await {
         Ok(published) => record(&app.db, (item_id, ws, limits), published, now).await,
         Err(e) => super::unpublished::handle(handle, (item_id, ws), &e.to_string(), now).await,

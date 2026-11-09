@@ -1,3 +1,7 @@
+If you changed files in a worktree, commit them before you hand the turn on, whoever you hand it
+to: finished work, work in progress before an ask, all of it. Quarterdeck only publishes commits, and
+if it finds uncommitted changes it hands the turn straight back to you to commit them.
+
 Every item has a turn, and while it's yours Quarterdeck keeps prompting you. Before you stop, hand
 it on with pass_turn on {{item}}, saying in `did` what you did in one line:
 - `agent` to carry on yourself in a fresh prompt,

@@ -22,7 +22,8 @@ const MARK: &str = "Quarterdeck couldn't push the agent's work";
 /// History notes that say the work did reach GitHub, which starts the count again.
 const PUBLISHED: [&str; 2] = ["Quarterdeck pushed", "Quarterdeck opened"];
 
-fn published(c: &Change) -> bool {
+/// Whether the event says the agent's work reached GitHub.
+pub(super) fn published(c: &Change) -> bool {
     matches!(c, Change::Note { text } if PUBLISHED.iter().any(|p| text.starts_with(p)))
 }
 
