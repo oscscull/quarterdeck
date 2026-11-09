@@ -1,8 +1,5 @@
 # Setting up Quarterdeck
 
-Reader: a person or agent installing Quarterdeck on a machine, or connecting two machines. Rewrite this
-when setup changes.
-
 ## One machine
 
 1. Needs: `gh auth login` done, Claude Code (`claude`) logged in.
