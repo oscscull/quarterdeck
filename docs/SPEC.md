@@ -290,8 +290,11 @@ project's `.claude/settings.local.json` copied in before every run. A PR's workt
 issue's is a new branch `issue-<n>` off the latest default branch, and the first run there also
 gets the issue's text (`prompts/issue-workspace.md`); a repo's is a new branch
 `quarterdeck/<item>` off it (`prompts/new-workspace.md`). The user's checkout is untouched. Since a
-project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes and no
-question on the item is open: it pushes commits the branch doesn't have and, for an issue or repo,
+project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes. First,
+if the worktree has changes no commit holds (bar the copied settings file), the turn goes straight
+back to the agent to commit them, whoever it was handed to, and nothing is published; after
+`failure_retries` times in a row it's the user's, naming the worktree. Then, if no question on the
+item is open, it pushes commits the branch doesn't have and, for an issue or repo,
 opens a PR (closing the issue, titled from the first commit) and makes the item that PR's, in review, so syncs and
 CI results follow it. A push that fails keeps the commits in the worktree: with no connection the
 agent gets the turn back once it returns; otherwise the agent gets it to fix what stopped it, up

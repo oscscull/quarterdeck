@@ -22,6 +22,7 @@ mod sources;
 mod stalled;
 mod thread;
 mod tick;
+mod uncommitted;
 mod unpublished;
 mod updates;
 mod wake;

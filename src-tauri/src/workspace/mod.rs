@@ -8,6 +8,7 @@ mod missing;
 mod publish;
 mod sweep;
 mod target;
+mod uncommitted;
 
 use std::path::PathBuf;
 
@@ -17,6 +18,7 @@ pub use missing::Missing;
 pub use publish::{Published, publish};
 pub use sweep::sweep;
 pub use target::Kind;
+pub use uncommitted::uncommitted;
 
 use crate::config::Config;
 use crate::config::projects;
