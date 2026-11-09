@@ -1,7 +1,7 @@
 # Quarterdeck spec
 
 Reader: anyone (human or agent) changing Quarterdeck. Rewrite this when the design changes. Setup lives
-in [setup.md](setup.md).
+in [setup.md](setup.md), building it in [development.md](development.md).
 
 ## What it is
 
