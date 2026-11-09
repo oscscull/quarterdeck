@@ -2,7 +2,7 @@
 
 Quarterdeck is a Tauri 2 desktop app that tracks work in flight and runs recurring
 Claude jobs. [docs/SPEC.md](docs/SPEC.md) describes the current design; [docs/setup.md](docs/setup.md)
-how to install it and connect machines.
+how to install it and connect machines; [docs/development.md](docs/development.md) how to build and release it.
 
 ## Principles (non-negotiable)
 
