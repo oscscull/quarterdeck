@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::branches::BranchSettings;
+use super::fixes::FixSettings;
 use super::issues::IssueSettings;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,10 +27,9 @@ pub struct GithubSettings {
     pub ignore: Vec<String>,
     /// Owners or repos where the user reviews their own PRs, so review waits on them.
     pub self_review: Vec<String>,
-    /// When CI fails on a PR nobody is on, and no `ci_failed` schedule covers it, hand it to Claude.
-    pub fix_ci: bool,
-    /// Claude Code tools that run may use, besides the Quarterdeck tools.
-    pub fix_ci_tools: Vec<String>,
+    /// What Claude fixes by itself: failing CI and review comments.
+    #[serde(flatten)]
+    pub fixes: FixSettings,
     /// Updating PRs that fall behind, and fixing ones that conflict.
     #[serde(flatten)]
     pub branches: BranchSettings,
@@ -50,8 +50,7 @@ impl Default for GithubSettings {
             areas: BTreeMap::new(),
             ignore: Vec::new(),
             self_review: Vec::new(),
-            fix_ci: true,
-            fix_ci_tools: Vec::new(),
+            fixes: FixSettings::default(),
             branches: BranchSettings::default(),
             informational_checks: BTreeMap::new(),
             issues: IssueSettings::default(),

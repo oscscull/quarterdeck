@@ -131,7 +131,9 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
   must be up to date with fires `pr_behind` and Quarterdeck updates its branch (`gh pr update-branch`,
   `update_behind`; on failure the turn goes to the user); one that starts conflicting fires
   `pr_conflicts` and goes to Claude like a CI failure (`prompts/fix-conflicts.md`, `fix_conflicts`).
-  A schedule on either event takes over. An item is closed
+  A schedule on either event takes over. New review comments go to Claude the same way
+  (`prompts/address-review.md`, `fix_reviews`): it makes the clear changes, replies on each thread
+  with the commit, and asks the user only about judgement calls. An item is closed
   only when `gh` says its PR merged or closed, never because the open-PR search missed it. Syncs
   every `poll_minutes`, and at once when the window regains focus (at most every
   `focus_sync_seconds`), after which the screen reloads.
@@ -259,8 +261,14 @@ needs (a connection) to come back. The user's turn means only that the user is n
   passes the turn to the agent, unless another question on the item is open.
 - **Others' turn**: after `others_hours` it goes to the item's `then`, else `others_then` (`agent`
   by default, to check whether it's still waiting and wait again or carry on; only `you` or
-  `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved, draft or
-  changes requested is the user's. GitHub never takes the turn from the agent.
+  `agent`). GitHub sets it from the PR: waiting on CI or reviewers is others', approved or draft is
+  the user's, and failing CI, conflicts or changes requested are the agent's while Claude fixes them
+  (`fix_ci`, `fix_conflicts`, `fix_reviews`), else the user's. GitHub never takes the turn from the
+  agent. The agent isn't prompted on an item while an event about it waits to be handled, so the
+  event's own run (a CI fix, say) is the only one.
+- **Handing back**: before an agent passes anything to the user it checks it can't do it itself
+  (`prompts/hand-over.md`). The user gets only what needs them: a credential or access, a judgement
+  call, something away from the computer, or a merge, release or message that's theirs to make.
 - **Later**: comes back when its time does, or sooner when an event in its `wake` fires (see
   Parking).
 

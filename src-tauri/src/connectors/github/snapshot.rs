@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::fetch::{Base, Pr, Reviewers};
+use crate::config::github::GithubSettings;
 use crate::domain::item::{Stage, Status};
 use crate::domain::schedule::EventKind;
 
@@ -59,9 +60,21 @@ fn state(pr: &Pr) -> (Option<Status>, &'static str, &'static str) {
         return (None, "draft", "you");
     }
     match pr.review.as_deref() {
-        Some("CHANGES_REQUESTED") => (None, "changes requested", "you"),
+        Some("CHANGES_REQUESTED") => (None, "changes requested, needs addressing", "Claude"),
         Some("APPROVED") => (Some(Status::Approved), "approved, ready to merge", "you"),
         _ => (Some(Status::Review), "waiting on review", "reviewers"),
+    }
+}
+
+/// Whether Claude takes on what the PR waits on by itself, where the PR waits on Claude: a fix
+/// for failing CI, then conflicts, then requested changes, the order `state` reads them in.
+pub const fn claude_fixes(s: &Snapshot, github: &GithubSettings) -> bool {
+    if s.ci_failing {
+        github.fixes.ci
+    } else if matches!(s.base, Base::Conflicts) {
+        github.branches.fix_conflicts
+    } else {
+        github.fixes.reviews
     }
 }
 
@@ -200,6 +213,18 @@ mod tests {
         };
         assert_eq!(of(&named).owned.holder, "madonoharu");
         assert_eq!(of(&pr(Some("SUCCESS"), None, 0)).owned.holder, "reviewers");
+    }
+
+    #[test]
+    fn requested_changes_go_to_claude_unless_switched_off() {
+        let asked = of(&pr(Some("SUCCESS"), Some("CHANGES_REQUESTED"), 1));
+        assert_eq!(asked.owned.holder, "Claude");
+        let mut github = GithubSettings::default();
+        assert!(claude_fixes(&asked, &github));
+        github.fixes.reviews = false;
+        assert!(!claude_fixes(&asked, &github));
+        let failing = of(&pr(Some("FAILURE"), Some("CHANGES_REQUESTED"), 1));
+        assert!(claude_fixes(&failing, &github));
     }
 
     #[test]

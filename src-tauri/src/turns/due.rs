@@ -12,7 +12,7 @@ use crate::domain::turn::Turn;
 pub enum Work {
     /// A run about the item is going.
     Running,
-    /// An answer or message is waiting to go to the agent.
+    /// An answer, message or event is waiting to go to the agent.
     Pending,
     /// A session outside Quarterdeck was heard from lately.
     Elsewhere,

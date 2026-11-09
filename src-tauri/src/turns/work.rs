@@ -1,5 +1,5 @@
-//! What the agent is doing on an item: running, about to get an answer, working in a session
-//! outside Quarterdeck, or nothing.
+//! What the agent is doing on an item: running, about to get an answer or an event's run, working
+//! in a session outside Quarterdeck, or nothing.
 
 use std::collections::{HashMap, HashSet};
 
@@ -11,14 +11,25 @@ use crate::domain::item::WorkItem;
 use crate::domain::session::SessionRef;
 use crate::domain::turn::Turn;
 use crate::error::AppResult;
-use crate::store::{Db, asks, events, runs, watch};
+use crate::store::{Db, asks, events, fired, runs, watch};
 use crate::turns::due::Work;
+
+/// Unhandled events looked through for items about to get a run from one.
+const EVENTS: u32 = 100;
 
 /// What Quarterdeck knows of the agent's work across items, read once per tick.
 pub struct Known {
     running: HashSet<String>,
     pending: HashSet<String>,
     sessions: HashMap<String, SessionRef>,
+}
+
+/// Items an answer is waiting to go to, or an event not yet handled is about: either may start
+/// a run of its own (a CI fix, say), so prompting the agent too would run it twice.
+async fn pending(db: &Db) -> AppResult<HashSet<String>> {
+    let answered = asks::answered(db).await?.into_iter().map(|a| a.ask.item_id);
+    let events = fired::new_events(db, EVENTS).await?.into_iter();
+    Ok(answered.chain(events.map(|e| e.subject)).collect())
 }
 
 pub async fn known(db: &Db) -> AppResult<Known> {
@@ -28,11 +39,7 @@ pub async fn known(db: &Db) -> AppResult<Known> {
             .into_iter()
             .map(|r| r.target)
             .collect(),
-        pending: asks::answered(db)
-            .await?
-            .into_iter()
-            .map(|a| a.ask.item_id)
-            .collect(),
+        pending: pending(db).await?,
         sessions: watch::all(db).await?,
     })
 }

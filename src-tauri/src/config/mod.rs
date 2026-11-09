@@ -9,6 +9,7 @@ pub mod branches;
 pub mod calendar;
 pub mod dev;
 pub mod edit;
+pub mod fixes;
 pub mod github;
 pub mod inbox;
 pub mod issues;
