@@ -5,10 +5,12 @@ use crate::connectors::github::issues;
 use crate::domain::activity::Activity;
 use crate::domain::commitment::Commitment;
 use crate::domain::item::{Stage, WorkItem};
+use crate::domain::outage::Outage;
 use crate::domain::todo::Todo;
 use crate::domain::urgent::Urgent;
 use crate::error::AppResult;
 use crate::priorities::{Priority, priorities};
+use crate::scheduler::outage;
 use crate::store::{Db, activity, asks, commitments, items, runs, todos, urgent};
 use crate::today::upcoming;
 
@@ -41,6 +43,8 @@ fn triage(items: &[WorkItem]) -> Vec<Triage> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
+    /// Set while the agent can't run at all; its work waits until it's back.
+    pub outage: Option<Outage>,
     pub urgent: Vec<Urgent>,
     pub upcoming: Vec<Commitment>,
     /// Every ask in rank order; the UI shows the first `priority_limit` in the chosen area.
@@ -61,6 +65,7 @@ pub async fn build(db: &Db, priority_limit: usize, now: DateTime<Utc>) -> AppRes
         .filter(|i| !matches!(i.stage(), Stage::UpNext | Stage::Done))
         .count();
     Ok(TodayView {
+        outage: outage::current(db).await?,
         urgent: urgent::list(db).await?,
         upcoming: upcoming(commitments::list(db).await?, now)
             .into_iter()

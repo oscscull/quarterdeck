@@ -15,6 +15,7 @@ pub mod chat;
 pub mod commitments;
 pub mod connect;
 pub mod items;
+pub mod outage;
 pub mod peers;
 pub mod runs;
 pub mod schedules;
@@ -71,6 +72,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         schedules::run_schedule_now,
         schedules::pause_all,
         schedules::resume_all,
+        outage::check_agent,
         urgent::dismiss_urgent,
         urgent::dismiss_all_urgent,
         urgent::resolve_urgent,

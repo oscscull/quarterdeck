@@ -1,15 +1,16 @@
 //! Whether the agent can be reached at all: a quick check before prompting it, and telling a run
-//! that never reached it (offline, `claude` missing, GitHub unreachable from `gh` or `git`) from one
-//! that went wrong.
+//! that never reached it (offline, `claude` missing or logged out, GitHub unreachable from `gh` or
+//! `git`) from one that went wrong.
 
 use tokio::net::TcpStream;
 
+use super::login;
 use crate::cli;
 use crate::config::outage::OutageSettings;
 
 /// Lower-case pieces of the errors a run gives when it couldn't reach the agent, from the
-/// `claude_command` hint in `follow`, the network errors Claude Code and Node report, and those
-/// `gh` and `git` give while making a worktree or pushing.
+/// `claude_command` hint in `follow`, the network errors Claude Code and Node report, those `gh`
+/// and `git` give while making a worktree or pushing, and what Claude Code says when logged out.
 const UNREACHED: &[&str] = &[
     "set claude_command",
     "connection error",
@@ -31,6 +32,11 @@ const UNREACHED: &[&str] = &[
     "connection timed out",
     "operation timed out",
     "temporary failure in name resolution",
+    "not logged in",
+    "run /login",
+    "invalid api key",
+    "authentication_error",
+    "oauth token",
 ];
 
 /// Whether a run failed because it couldn't reach the agent, rather than going wrong.
@@ -39,22 +45,27 @@ pub fn unreached(detail: &str) -> bool {
     UNREACHED.iter().any(|p| detail.contains(p))
 }
 
-/// Why the agent can't run now, or `None` when it can: `command` must exist and `probe` answer.
+/// Why the agent can't run now, or `None` when it can: `command` must exist, each probe answer
+/// and Claude Code be logged in.
 pub async fn check(command: &str, settings: &OutageSettings) -> Option<String> {
     // Finding it may ask the login shell, which blocks.
     let owned = command.to_owned();
-    let found = tokio::task::spawn_blocking(move || cli::resolve(&owned).exists()).await;
-    if !found.unwrap_or(false) {
+    let found = tokio::task::spawn_blocking(move || {
+        let program = cli::resolve(&owned);
+        program.exists().then_some(program)
+    })
+    .await;
+    let Some(program) = found.ok().flatten() else {
         return Some(format!(
             "`{command}` wasn't found; set claude_command in quarterdeck.toml to its full path"
         ));
-    }
+    };
     for probe in [&settings.probe, &settings.github_probe] {
         if let Some(why) = unanswered(probe, settings).await {
             return Some(why);
         }
     }
-    None
+    login::missing(&program).await
 }
 
 /// Why `probe` (`host:port`) didn't answer; `None` when it did or is empty.
@@ -90,9 +101,19 @@ mod tests {
     }
 
     #[test]
+    fn a_logged_out_agent_is_unreached() {
+        assert!(unreached(
+            "claude failed: Not logged in · Please run /login"
+        ));
+        assert!(unreached("Invalid API key · Please run /login"));
+        assert!(unreached(
+            "API Error: 401 {\"type\":\"authentication_error\"}"
+        ));
+    }
+
+    #[test]
     fn a_run_that_went_wrong_is_not_unreached() {
         assert!(!unreached("it exited with no message (exit status: 1)"));
-        assert!(!unreached("Invalid API key · Please run /login"));
         assert!(!unreached(
             "send it again to start afresh: the folder this run belonged in is gone"
         ));

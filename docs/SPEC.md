@@ -248,14 +248,20 @@ needs (a connection) to come back. The user's turn means only that the user is n
   (`retry_urgent`: back to the agent, whose next prompt is the failed run's own, kept on its run
   record) and hands it to the user. Passing to itself keeps the clock, so after `agent_hours` the
   turn comes back to the user regardless.
-- **When the agent can't run at all** (offline, `claude` missing, API overloaded, GitHub
-  unreachable from `gh` or `git`), its work waits instead of failing. Each tick checks first that
-  `claude` exists and `[outage] probe` and `github_probe` answer; a
-  failed check, or a run whose error says it never reached the agent, raises one urgent item and
-  stops prompting, delivering answers and starting the queue. Agent's-turn items keep the turn
-  (their clocks still run out to the user) and an undelivered answer stays to go again. Checks
-  repeat after `first_retry_seconds`, doubling to `max_retry_seconds`, and at once when the window
-  regains focus; the first good one clears the item.
+- **When the agent can't run at all** (offline, `claude` missing or logged out, API overloaded,
+  GitHub unreachable from `gh` or `git`), its work waits instead of failing. Each tick checks first
+  that `claude` exists, `[outage] probe` and `github_probe` answer, and `claude auth status` says
+  it's logged in; a failed check, or a run (on an item or a schedule) whose error says it never
+  reached the agent, starts one outage: a single banner on Today with the reason and Check now
+  (`check_agent`), which says what it found. Nothing is prompted, no answers are delivered and the
+  queue doesn't start; no item or schedule raises its own alert. Agent's-turn items keep the turn
+  and none runs out to the user: when the agent is back, each gets the outage's length added to
+  its clock. An undelivered answer stays to go again. Checks repeat after `first_retry_seconds`,
+  doubling to `max_retry_seconds`, and at once when the window regains focus; the first good one
+  ends the outage, with a notification unless the user is at the window. An outage that returns
+  within `max_retry_seconds` (the check passed but runs still can't get through) carries on the
+  same wait, and neither it nor its end notifies. An item on the user's turn only because its run
+  couldn't reach the agent goes back to the agent once it can run.
 - **The user's turn**: says what's needed (`pass_turn` requires `need`; system passes use their
   reason) and is reminded every `you_remind_hours`. Any reply (an answer, Tell Claude)
   passes the turn to the agent, unless another question on the item is open.

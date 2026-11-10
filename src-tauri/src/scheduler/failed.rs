@@ -23,6 +23,14 @@ pub struct Failure<'a> {
     pub run: Option<i64>,
 }
 
+/// Starts the need of every item handed back because its run failed.
+pub const COULDNT_RUN: &str = "your agent couldn't run";
+
+/// The title of the alert raised about `item_id`'s failed run.
+pub fn alert_title(item_id: &str) -> String {
+    format!("Your agent couldn't run on {item_id}")
+}
+
 /// What to show when a run died without saying why.
 const NO_DETAIL: &str = "it stopped without saying why";
 const NEXT_STEP: &str = "Open its run on the Agent tab, or tell Claude to look into it.";
@@ -59,7 +67,7 @@ impl Failure<'_> {
 }
 
 async fn raise_urgent(db: &Db, item: &WorkItem, f: &Failure<'_>) -> AppResult<String> {
-    let title = format!("Your agent couldn't run on {}", item.id);
+    let title = alert_title(&item.id);
     let raised = Urgent {
         id: 0,
         title: title.clone(),
@@ -76,7 +84,7 @@ async fn raise_urgent(db: &Db, item: &WorkItem, f: &Failure<'_>) -> AppResult<St
 async fn hand_back(db: &Db, f: &Failure<'_>, limits: &TurnSettings) -> AppResult<String> {
     watch::release(db, f.item_id).await?;
     let item = items::get(db, f.item_id).await?;
-    let why = format!("your agent couldn't run ({}): {}", f.what, f.detail());
+    let why = format!("{COULDNT_RUN} ({}): {}", f.what, f.detail());
     turns::pass(db, &item.id, Pass::to(Turn::You, why), Clock::now(limits)).await?;
     raise_urgent(db, &item, f).await
 }

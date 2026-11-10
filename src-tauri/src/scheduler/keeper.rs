@@ -3,8 +3,9 @@
 //! turn on. The rules are in `turns::due`; this carries them out.
 //!
 //! Clocks never stop. This machine keeps every item in its database, whatever area it's in, since
-//! no other machine holds that record. While the agent can't be prompted (paused, or it can't run)
-//! only prompting stops: its turns still run out to the user.
+//! no other machine holds that record. While everything is paused only prompting stops: the
+//! agent's turns still run out to the user. While the agent can't run they don't, since the user
+//! can do nothing about each one: they wait for it (see `downtime`).
 
 use chrono::Utc;
 use tauri::{AppHandle, Manager as _};
@@ -28,12 +29,14 @@ async fn act(handle: &AppHandle, keeping: Keeping<'_>, item: &WorkItem, due: Due
     let Keeping {
         settings,
         prompting,
+        agent_down,
     } = keeping;
     let db = &handle.state::<App>().db;
     let clock = Clock::now(&settings.turns);
     match due {
         Due::Wait => Ok(()),
         Due::Prompt if !prompting => Ok(()),
+        Due::PassTo { .. } if agent_down && item.is_turn(Turn::Agent) => Ok(()),
         Due::StartClock => {
             turns::reset_clock(
                 db,
@@ -93,6 +96,8 @@ fn tell_user(handle: &AppHandle, item: &WorkItem, heading: &str) {
 pub struct Keeping<'a> {
     pub settings: &'a Settings,
     pub prompting: bool,
+    /// The agent can't run at all, so its turns don't run out.
+    pub agent_down: bool,
 }
 
 async fn keep(

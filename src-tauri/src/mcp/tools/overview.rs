@@ -14,8 +14,8 @@ pub fn tools() -> Vec<Tool> {
         async_tool(
             "get_overview",
             "Everything on the user's Today screen: upcoming meetings, the asks that need them on \
-             their highest-ranked work, to-dos, GitHub issues waiting to be triaged, urgent items and \
-             recent updates. Start here.",
+             their highest-ranked work, to-dos, GitHub issues waiting to be triaged, urgent items, \
+             recent updates, and `outage` while the agent can't run at all. Start here.",
             overview,
         ),
         tool(

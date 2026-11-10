@@ -182,10 +182,10 @@ others_then = "agent"
 quiet_minutes = 45
 failure_retries = 2
 
-# When the agent can't run at all (offline, `claude` missing), its work waits instead of failing:
-# one card says so, and its items keep the agent's turn. Quarterdeck checks again after
-# first_retry_seconds, doubling the wait each time up to max_retry_seconds; coming back to the
-# window checks at once. `probe` is a host:port the agent needs ("" checks only for `claude`), and
+# When the agent can't run at all (offline, `claude` missing or logged out), its work waits instead
+# of failing: one banner on Today says so, and its items keep the agent's turn. Quarterdeck checks
+# again after first_retry_seconds, doubling the wait each time up to max_retry_seconds; coming back
+# to the window checks at once. `probe` is a host:port the agent needs ("" skips it), and
 # `github_probe` one that worktrees and pushes need ("" skips it).
 [outage]
 first_retry_seconds = 60
