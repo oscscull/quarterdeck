@@ -255,12 +255,13 @@ needs (a connection) to come back. The user's turn means only that the user is n
   reached the agent, starts one outage: a single banner on Today with the reason and Check now
   (`check_agent`), which says what it found. Nothing is prompted, no answers are delivered and the
   queue doesn't start; no item or schedule raises its own alert. Agent's-turn items keep the turn
-  (their clocks still run out to the user) and an undelivered answer stays to go again. Checks
-  repeat after `first_retry_seconds`, doubling to `max_retry_seconds`, and at once when the window
-  regains focus; the first good one ends the outage. One that returns within `max_retry_seconds`
-  (the check passed but runs still can't get through) carries on the same wait without a new
-  notification. An item on the user's turn only because its run couldn't reach the agent goes back
-  to the agent once it can run.
+  and none runs out to the user: when the agent is back, each gets the outage's length added to
+  its clock. An undelivered answer stays to go again. Checks repeat after `first_retry_seconds`,
+  doubling to `max_retry_seconds`, and at once when the window regains focus; the first good one
+  ends the outage, with a notification unless the user is at the window. An outage that returns
+  within `max_retry_seconds` (the check passed but runs still can't get through) carries on the
+  same wait, and neither it nor its end notifies. An item on the user's turn only because its run
+  couldn't reach the agent goes back to the agent once it can run.
 - **The user's turn**: says what's needed (`pass_turn` requires `need`; system passes use their
   reason) and is reminded every `you_remind_hours`. Any reply (an answer, Tell Claude)
   passes the turn to the agent, unless another question on the item is open.

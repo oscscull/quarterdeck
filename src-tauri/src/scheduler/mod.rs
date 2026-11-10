@@ -7,6 +7,7 @@ mod branch;
 mod ci;
 mod connectors;
 mod dispatch;
+mod downtime;
 mod due;
 mod events;
 mod failed;

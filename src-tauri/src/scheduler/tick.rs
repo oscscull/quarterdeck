@@ -28,8 +28,8 @@ struct Window {
     now: DateTime<Utc>,
 }
 
-/// Clocks go first and run whatever else happens: a pause, an agent that can't run or a failing
-/// step later in the tick can stop work starting, never a turn running out.
+/// Clocks go first and run whatever else happens: a pause or a failing step later in the tick can
+/// stop work starting, never a turn running out. Only an agent that can't run holds its own turns.
 pub async fn tick(handle: &AppHandle) -> AppResult<()> {
     let app = handle.state::<App>();
     let settings = app.settings()?;
@@ -45,6 +45,7 @@ pub async fn tick(handle: &AppHandle) -> AppResult<()> {
     let keeping = Keeping {
         settings: &settings,
         prompting: up && !paused,
+        agent_down: !up,
     };
     let kept = super::keeper::check(handle, keeping).await;
     let rest = the_rest(handle, &settings, Agent { up, paused }).await;

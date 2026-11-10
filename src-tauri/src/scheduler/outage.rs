@@ -1,7 +1,7 @@
 //! While the agent can't run at all (offline, `claude` missing or logged out), its work waits
 //! instead of failing: one banner says so, nothing is prompted, and Quarterdeck checks again,
-//! waiting longer each time. The first good check clears it. Turn clocks keep running throughout,
-//! so work on the agent's turn still comes back to the user if the outage outlasts it.
+//! waiting longer each time. The first good check clears it. The outage doesn't count against the
+//! agent's turns (see `downtime`), so none of its work comes to the user because of it.
 
 use chrono::{DateTime, Duration, Utc};
 use tauri::{AppHandle, Manager as _};
@@ -20,7 +20,11 @@ const NEXT: &str = "outage.next_check";
 const GAP: &str = "outage.gap_seconds";
 const WHY: &str = "outage.why";
 const RECOVERED: &str = "outage.recovered";
+/// Set on an outage that came straight back after the last, which is no news either way.
+const RELAPSE: &str = "outage.relapse";
 const TITLE: &str = "Your agent can't run";
+const BACK_TITLE: &str = "Your agent can run again";
+const BACK_DETAIL: &str = "Its waiting work is carrying on.";
 /// The longest reason the banner shows.
 const WHY_CHARS: usize = 200;
 /// Runs failing together report together; one at a time, they start one outage and wait once.
@@ -50,7 +54,13 @@ pub async fn agent_up(handle: &AppHandle, settings: &Settings, now: bool) -> App
         return Ok(false);
     }
     match reach::check(command, &settings.outage).await {
-        None => recover(db).await.map(|()| true),
+        None => {
+            // Someone looking at the window sees the banner go; anyone else is told.
+            if recover(db).await? && !now {
+                drop(notify::send(handle, BACK_TITLE, BACK_DETAIL));
+            }
+            Ok(true)
+        }
         Some(why) => report(handle, settings, &why).await.map(|()| false),
     }
 }
@@ -68,7 +78,7 @@ pub async fn recheck(handle: &AppHandle) -> AppResult<()> {
 /// `None` now the agent can run.
 pub async fn check_now(db: &Db, settings: &Settings) -> AppResult<Option<Outage>> {
     match reach::check(settings.claude()?, &settings.outage).await {
-        None => recover(db).await?,
+        None => drop(recover(db).await?),
         Some(why) => drop(note(db, settings, &why).await?),
     }
     current(db).await
@@ -129,20 +139,27 @@ async fn note(db: &Db, settings: &Settings, why: &str) -> AppResult<bool> {
     meta::forget(db, RECOVERED).await?;
     if !down {
         meta::set_time(db, SINCE, now).await?;
+        match gap {
+            Some(_) => meta::set_text(db, RELAPSE, "yes").await?,
+            None => meta::forget(db, RELAPSE).await?,
+        }
     }
     Ok(gap.is_none())
 }
 
-/// Ends the outage, if there is one. Clocks aren't renewed: an outage that keeps coming back must
-/// not keep work from ever reaching the user.
-async fn recover(db: &Db) -> AppResult<()> {
-    if meta::time(db, SINCE).await?.is_none() {
-        return Ok(());
-    }
+/// Ends the outage and gives the agent's turns back the time it took. Says whether that's news:
+/// not when there was none, or it was one that had only come straight back.
+async fn recover(db: &Db) -> AppResult<bool> {
+    let Some(since) = meta::time(db, SINCE).await? else {
+        return Ok(false);
+    };
+    let now = Utc::now();
+    super::downtime::give_back(db, since, now).await?;
     for key in [SINCE, NEXT, WHY] {
         meta::forget(db, key).await?;
     }
-    meta::set_time(db, RECOVERED, Utc::now()).await
+    meta::set_time(db, RECOVERED, now).await?;
+    Ok(meta::text(db, RELAPSE).await?.is_none())
 }
 
 #[cfg(test)]
@@ -168,10 +185,12 @@ mod tests {
         let db = Db::in_memory().await;
         let settings = Settings::default();
         note(&db, &settings, "overloaded").await.unwrap();
-        recover(&db).await.unwrap();
+        assert!(recover(&db).await.unwrap());
         assert!(!note(&db, &settings, "overloaded").await.unwrap());
+        assert!(!recover(&db).await.unwrap());
+        note(&db, &settings, "overloaded").await.unwrap();
         let gap = meta::text(&db, GAP).await.unwrap();
-        let doubled = settings.outage.first_retry_seconds * 2;
+        let doubled = settings.outage.first_retry_seconds * 4;
         assert_eq!(gap, Some(doubled.to_string()));
     }
 }
