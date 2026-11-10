@@ -37,7 +37,7 @@ pub async fn resolve_urgent(app: State<'_, App>, id: i64, message: String) -> Ap
         ("message", message.as_str()),
     ];
     let prompt = render(&app.config, Prompt::ResolveUrgent, &vars)?;
-    let reply = claude::ask(settings.claude()?, &prompt).await?;
+    let reply = claude::ask(&settings.claude()?, &prompt).await?;
     let note = Activity {
         id: 0,
         text: reply.clone(),

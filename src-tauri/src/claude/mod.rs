@@ -4,11 +4,14 @@ pub mod connect;
 pub mod draft;
 mod follow;
 mod login;
+mod program;
 pub mod reach;
 pub mod runner;
 pub mod sessions;
 mod stream;
 pub mod transcript;
+
+pub use program::Program;
 
 use tokio::process::Command;
 
@@ -61,10 +64,10 @@ pub enum Session<'a> {
 }
 
 /// Sends one prompt and returns Claude's reply text. The Quarterdeck tools are always available.
-pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<String> {
+pub async fn ask_with(claude: &Program, prompt: &str, opts: &Ask<'_>) -> AppResult<String> {
     let mut allowed = vec![QUARTERDECK_TOOLS.to_owned()];
     allowed.extend_from_slice(opts.tools);
-    let program = cli::resolve(command);
+    let program = cli::resolve(&claude.command);
     let mut cmd = Command::new(&program);
     if let Some(path) = cli::path_beside(&program) {
         cmd.env("PATH", path);
@@ -75,6 +78,7 @@ pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<
         .arg(quarterdeck_server(opts.depth)?)
         .arg("--allowedTools")
         .arg(allowed.join(","));
+    claude.lock(&mut cmd);
     if let Some(dir) = opts.cwd {
         cmd.current_dir(dir);
     }
@@ -90,6 +94,6 @@ pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<
 }
 
 /// Sends one prompt with only the Quarterdeck tools.
-pub async fn ask(command: &str, prompt: &str) -> AppResult<String> {
-    ask_with(command, prompt, &Ask::default()).await
+pub async fn ask(claude: &Program, prompt: &str) -> AppResult<String> {
+    ask_with(claude, prompt, &Ask::default()).await
 }

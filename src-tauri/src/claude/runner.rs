@@ -42,7 +42,7 @@ async fn ask(app: &App, schedule: &Schedule, begun: &Begun, trigger: &str) -> Ap
         run: Some(begun.id),
         depth: begun.depth,
     };
-    super::ask_with(settings.claude()?, &prompt, &opts).await
+    super::ask_with(&settings.claude()?, &prompt, &opts).await
 }
 
 /// Runs `schedule` now and records how it went. `cause` is the event that started it, if one

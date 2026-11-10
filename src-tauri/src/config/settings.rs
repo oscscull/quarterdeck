@@ -11,6 +11,7 @@ use super::outage::OutageSettings;
 use super::sync::SyncSettings;
 use super::turns::TurnSettings;
 use super::updates::UpdateSettings;
+use crate::claude::Program;
 use crate::error::{AppError, AppResult};
 use crate::profile;
 
@@ -35,6 +36,8 @@ pub struct Settings {
     /// How many earlier chat messages go to Claude with each new one.
     pub chat_history_messages: usize,
     pub claude_command: String,
+    /// The model every headless run is locked to (`--model`). Empty leaves it to Claude Code.
+    pub claude_model: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
     pub event_ttl_days: i64,
@@ -65,6 +68,7 @@ impl Default for Settings {
             priority_limit: 3,
             chat_history_messages: 20,
             claude_command: "claude".to_owned(),
+            claude_model: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,
@@ -96,15 +100,19 @@ impl Settings {
             .map_or(self.node.as_str(), |a| a.node.as_str())
     }
 
-    /// The command that runs Claude. A dev build runs it only when `[dev] run_claude` is on.
-    pub fn claude(&self) -> AppResult<&str> {
+    /// How to run Claude, locked to `claude_model`. A dev build runs it only when `[dev]
+    /// run_claude` is on.
+    pub fn claude(&self) -> AppResult<Program> {
         if profile::DEV && !self.dev.run_claude {
             return Err(AppError::Claude(
                 "this dev build doesn't run Claude; set [dev] run_claude = true in its quarterdeck.toml"
                     .to_owned(),
             ));
         }
-        Ok(&self.claude_command)
+        Ok(Program {
+            command: self.claude_command.clone(),
+            model: self.claude_model.clone(),
+        })
     }
 
     /// Whether script schedules may run. A dev build runs them only when `[dev] run_scripts` is on.
@@ -148,6 +156,7 @@ mod tests {
             priority_limit: 3,
             chat_history_messages: 20,
             claude_command: String::new(),
+            claude_model: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,
