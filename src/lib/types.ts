@@ -183,7 +183,16 @@ export interface Triage {
   node?: string;
 }
 
+/** The agent can't run at all; its work waits until a check finds it back. */
+export interface Outage {
+  why: string;
+  since: string;
+  nextCheck: string | null;
+}
+
 export interface TodayView {
+  /** Missing from machines running an older Quarterdeck. */
+  outage?: Outage | null;
   urgent: Urgent[];
   upcoming: Commitment[];
   priorities: Priority[];

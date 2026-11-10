@@ -19,6 +19,7 @@
   import { fromPeers } from "../lib/peers.svelte";
   import { route } from "../lib/route";
   import { changed } from "../lib/refresh.svelte";
+  import AgentDownBanner from "./today/AgentDownBanner.svelte";
   import CommitmentModal from "./today/CommitmentModal.svelte";
   import TodoList from "./today/TodoList.svelte";
   import TriageLine from "./today/TriageLine.svelte";
@@ -77,6 +78,7 @@
 <div class="column">
   <LoadError {error} />
   {#if data}
+    <AgentDownBanner outage={data.outage ?? null} onChanged={load} />
     <section class="next" aria-label={t("today.next")}>
       <div class="label-row">
         <span class="section-label">{t("today.next")}</span>

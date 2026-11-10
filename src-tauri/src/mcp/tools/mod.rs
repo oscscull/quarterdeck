@@ -10,6 +10,7 @@ mod commitments;
 mod events;
 mod hello;
 mod items;
+mod outage;
 mod overview;
 mod projects;
 mod queue;
@@ -42,6 +43,7 @@ pub fn all() -> Vec<Tool> {
         todos::tools(),
         commitments::tools(),
         urgent::tools(),
+        outage::tools(),
         updates::tools(),
         schedules::tools(),
         events::tools(),

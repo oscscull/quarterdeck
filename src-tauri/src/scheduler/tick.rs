@@ -38,6 +38,10 @@ pub async fn tick(handle: &AppHandle) -> AppResult<()> {
         .await
         .unwrap_or(false);
     let paused = !matches!(pause::current(&app.config, now), Ok(None));
+    if up {
+        // Before the keeper, so what goes back to the agent is prompted this tick.
+        drop(super::stranded::resume(&app.db, &settings.turns).await);
+    }
     let keeping = Keeping {
         settings: &settings,
         prompting: up && !paused,

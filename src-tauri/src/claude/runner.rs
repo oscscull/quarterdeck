@@ -2,6 +2,7 @@
 
 use tauri::{AppHandle, Manager as _};
 
+use super::reach;
 use crate::app::App;
 use crate::config::prompts::{Prompt, render};
 use crate::domain::fired::Fired;
@@ -10,6 +11,7 @@ use crate::domain::schedule::Schedule;
 use crate::domain::script::Report;
 use crate::error::AppResult;
 use crate::jobs::{self, Begun, Ended};
+use crate::scheduler::outage;
 
 /// Why it's running, as the prompt says it: the event's line and its fields.
 fn why(cause: Option<&Fired>) -> AppResult<String> {
@@ -52,10 +54,20 @@ pub async fn run(handle: &AppHandle, schedule: &Schedule, cause: Option<&Fired>)
         Ok(text) => (Outcome::Ok, jobs::summary_of(&text)),
         Err(e) => (Outcome::Failed, jobs::summary_of(&e.to_string())),
     };
+    // A run that never reached the agent is the outage's to report, once for all of them.
+    let unreached = outcome == Outcome::Failed && reach::unreached(&summary);
+    if unreached {
+        outage::report(handle, &app.settings()?, &summary).await?;
+    }
+    let report = if unreached {
+        Report::Never
+    } else {
+        Report::Always
+    };
     let ended = Ended {
         outcome,
         summary,
-        report: Report::Always,
+        report,
     };
     jobs::settle(handle, schedule, &begun, &ended).await
 }
