@@ -22,6 +22,11 @@ project_permission_mode = "auto"
 # Command used to run Claude headlessly (`<command> -p "<prompt>"`).
 claude_command = "claude"
 
+# The model every Claude run is locked to, subagents included, e.g. "claude-opus-5-5" (stays put
+# when new models come out) or "opus" (follows the latest). Empty uses whatever Claude Code picks.
+# Agents can't change this; edit it here.
+claude_model = ""
+
 # How long stored agent output lives before it is deleted.
 activity_ttl_days = 7
 run_ttl_days = 14

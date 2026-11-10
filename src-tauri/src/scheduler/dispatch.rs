@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager as _};
 use super::run_turn;
 use super::thread::Thread;
 use crate::app::App;
-use crate::claude::{self, Ask, Session, reach};
+use crate::claude::{self, Ask, Program, Session, reach};
 use crate::config::Config;
 use crate::config::prompts::{Prompt, render};
 use crate::config::settings::Settings;
@@ -115,7 +115,7 @@ async fn prompt_for(job: &Job) -> AppResult<String> {
 /// How to run a job: `mode` applies to work in a project's worktree, `run` is its record.
 struct How {
     /// An error when this build may not run Claude; the run records it as failed.
-    command: AppResult<String>,
+    command: AppResult<Program>,
     mode: String,
     run: i64,
     started: DateTime<Utc>,
@@ -206,7 +206,7 @@ pub async fn run(handle: &AppHandle, settings: &Settings, job: Job) -> AppResult
     run_turn::take(&app.db, (&job.item_id, &job.what), &settings.turns).await?;
     let started = Utc::now();
     let how = How {
-        command: settings.claude().map(str::to_owned),
+        command: settings.claude(),
         mode: settings.project_permission_mode.clone(),
         run: start_record(handle, settings, &job, started).await?,
         started,

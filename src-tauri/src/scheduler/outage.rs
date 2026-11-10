@@ -47,13 +47,13 @@ pub async fn current(db: &Db) -> AppResult<Option<Outage>> {
 pub async fn agent_up(handle: &AppHandle, settings: &Settings, now: bool) -> AppResult<bool> {
     let db = &handle.state::<App>().db;
     // A build that may not run the agent isn't down; its runs are turned away elsewhere.
-    let Ok(command) = settings.claude() else {
+    let Ok(claude) = settings.claude() else {
         return Ok(true);
     };
     if !now && waiting(db).await? {
         return Ok(false);
     }
-    match reach::check(command, &settings.outage).await {
+    match reach::check(&claude.command, &settings.outage).await {
         None => {
             // Someone looking at the window sees the banner go; anyone else is told.
             if recover(db).await? && !now {
@@ -77,7 +77,7 @@ pub async fn recheck(handle: &AppHandle) -> AppResult<()> {
 /// Checks at once because someone asked, and says what it found: the outage still going on, or
 /// `None` now the agent can run.
 pub async fn check_now(db: &Db, settings: &Settings) -> AppResult<Option<Outage>> {
-    match reach::check(settings.claude()?, &settings.outage).await {
+    match reach::check(&settings.claude()?.command, &settings.outage).await {
         None => drop(recover(db).await?),
         Some(why) => drop(note(db, settings, &why).await?),
     }

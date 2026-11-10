@@ -30,7 +30,7 @@ pub async fn ask_claude(app: State<'_, App>, request: ChatRequest) -> AppResult<
         ("message", request.message.as_str()),
     ];
     let prompt = render(&app.config, Prompt::Chat, &vars)?;
-    claude::ask(settings.claude()?, &prompt).await
+    claude::ask(&settings.claude()?, &prompt).await
 }
 
 /// Turns a plain-English request into a new schedule file. Returns its id.
@@ -54,7 +54,7 @@ pub async fn draft_schedule(app: State<'_, App>, request: String) -> AppResult<S
         ("description", request.as_str()),
     ];
     let prompt = render(&app.config, Prompt::DraftSchedule, &vars)?;
-    let reply = claude::ask(settings.claude()?, &prompt).await?;
+    let reply = claude::ask(&settings.claude()?, &prompt).await?;
     let mut schedule = draft::parse(&reply, &request)?;
     schedule.area = settings.known_area(&schedule.area);
     if let Some(id) =

@@ -1,5 +1,6 @@
-//! The plain settings in `quarterdeck.toml` an agent may change by name. `claude_command` is left
-//! out on purpose: whoever sets it chooses what program Quarterdeck runs.
+//! The plain settings in `quarterdeck.toml` an agent may change by name. `claude_command` and
+//! `claude_model` are left out on purpose: whoever sets them chooses what program and model
+//! Quarterdeck runs, and a lock an agent can lift isn't one.
 
 use schemars::JsonSchema;
 use serde::Deserialize;
