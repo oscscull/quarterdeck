@@ -6,15 +6,17 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
+use super::Program;
 use crate::cli;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 const SIGNED_OUT: &str = "Claude Code is not logged in: run `claude` in a terminal and use /login";
 
-/// Why the agent can't run for want of a login. `None` when it's signed in, and when `program`
-/// can't say (an older Claude Code): a run finds out then.
-pub async fn missing(program: &Path) -> Option<String> {
+/// Why the agent can't run for want of a login, asked as the account runs use. `None` when it's
+/// signed in, and when `program` can't say (an older Claude Code): a run finds out then.
+pub async fn missing(program: &Path, claude: &Program) -> Option<String> {
     let mut cmd = Command::new(program);
+    claude.as_user(&mut cmd);
     if let Some(path) = cli::path_beside(program) {
         cmd.env("PATH", path);
     }

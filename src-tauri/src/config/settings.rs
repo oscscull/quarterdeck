@@ -104,10 +104,14 @@ impl Settings {
             .map_or(self.node.as_str(), |a| a.node.as_str())
     }
 
-    /// How to run Claude, locked to `claude_model` and `claude_user`. A dev build runs it only
-    /// when `[dev] run_claude` is on.
+    /// Whether this build may run Claude. A dev build runs it only when `[dev] run_claude` is on.
+    pub const fn may_run_claude(&self) -> bool {
+        !profile::DEV || self.dev.run_claude
+    }
+
+    /// How to run Claude, locked to `claude_model` and `claude_user`.
     pub fn claude(&self) -> AppResult<Program> {
-        if profile::DEV && !self.dev.run_claude {
+        if !self.may_run_claude() {
             return Err(AppError::Claude(
                 "this dev build doesn't run Claude; set [dev] run_claude = true in its quarterdeck.toml"
                     .to_owned(),
@@ -127,16 +131,16 @@ impl Settings {
         if !set.is_empty() {
             return Ok(set.to_owned());
         }
-        nix::unistd::User::from_uid(nix::unistd::getuid())
-            .ok()
-            .flatten()
-            .map(|u| u.name)
-            .ok_or_else(|| {
-                AppError::Claude(
-                    "couldn't find this Mac's account name; set claude_user in quarterdeck.toml"
-                        .to_owned(),
-                )
-            })
+        match nix::unistd::User::from_uid(nix::unistd::getuid()) {
+            Ok(Some(user)) => Ok(user.name),
+            Ok(None) => Err(AppError::Claude(
+                "this Mac's account isn't in its account database; set claude_user in quarterdeck.toml"
+                    .to_owned(),
+            )),
+            Err(e) => Err(AppError::Claude(format!(
+                "couldn't look up this Mac's account name ({e}); set claude_user in quarterdeck.toml"
+            ))),
+        }
     }
 
     /// Whether script schedules may run. A dev build runs them only when `[dev] run_scripts` is on.

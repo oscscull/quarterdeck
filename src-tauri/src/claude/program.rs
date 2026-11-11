@@ -17,10 +17,15 @@ pub struct Program {
 }
 
 impl Program {
+    /// Runs `cmd` as `user`, whatever `USER` Quarterdeck inherited.
+    pub fn as_user(&self, cmd: &mut Command) {
+        cmd.env("USER", &self.user).env("LOGNAME", &self.user);
+    }
+
     /// Pins `cmd` to the account and the model, so neither the inherited `USER` nor Claude Code's
     /// defaults nor a subagent can pick another.
     pub fn lock(&self, cmd: &mut Command) {
-        cmd.env("USER", &self.user).env("LOGNAME", &self.user);
+        self.as_user(cmd);
         if self.model.is_empty() {
             return;
         }

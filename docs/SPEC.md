@@ -158,7 +158,7 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
 
 `claude -p` on the user's subscription, with the Quarterdeck MCP tools always allowed. Every run,
 chats and drafts included, is locked to `claude_model` (`--model`, and `CLAUDE_CODE_SUBAGENT_MODEL`
-so its subagents use it too); empty leaves the model to Claude Code. Every run gets `claude_user`
+so its subagents use it too); empty leaves the model to Claude Code. Every run, and the login check, gets `claude_user`
 as `USER` and `LOGNAME`, so Claude Code finds the login saved under that account; empty uses this
 Mac's account name, never the inherited `USER`. It is found
 in the usual install folders, else through the user's login shell (so nvm installs work); if it
