@@ -85,7 +85,12 @@ pub async fn recheck(handle: &AppHandle) -> AppResult<()> {
 /// Checks at once because someone asked, and says what it found: the outage still going on, or
 /// `None` now the agent can run.
 pub async fn check_now(db: &Db, settings: &Settings) -> AppResult<Option<Outage>> {
-    match reach::check(&settings.claude()?, &settings.outage).await {
+    let why = match settings.claude() {
+        Ok(claude) => reach::check(&claude, &settings.outage).await,
+        Err(e) if settings.may_run_claude() => Some(e.to_string()),
+        Err(e) => return Err(e),
+    };
+    match why {
         None => drop(recover(db).await?),
         Some(why) => drop(note(db, settings, &why).await?),
     }
