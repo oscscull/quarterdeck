@@ -38,6 +38,9 @@ pub struct Settings {
     pub claude_command: String,
     /// The model every headless run is locked to (`--model`). Empty leaves it to Claude Code.
     pub claude_model: String,
+    /// The account Claude Code's login is saved under (`USER` and `LOGNAME` for every run). Empty
+    /// uses this Mac's account name; the inherited `USER` is never used.
+    pub claude_user: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
     pub event_ttl_days: i64,
@@ -69,6 +72,7 @@ impl Default for Settings {
             chat_history_messages: 20,
             claude_command: "claude".to_owned(),
             claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,
@@ -100,8 +104,8 @@ impl Settings {
             .map_or(self.node.as_str(), |a| a.node.as_str())
     }
 
-    /// How to run Claude, locked to `claude_model`. A dev build runs it only when `[dev]
-    /// run_claude` is on.
+    /// How to run Claude, locked to `claude_model` and `claude_user`. A dev build runs it only
+    /// when `[dev] run_claude` is on.
     pub fn claude(&self) -> AppResult<Program> {
         if profile::DEV && !self.dev.run_claude {
             return Err(AppError::Claude(
@@ -112,7 +116,27 @@ impl Settings {
         Ok(Program {
             command: self.claude_command.clone(),
             model: self.claude_model.clone(),
+            user: self.claude_user()?,
         })
+    }
+
+    /// `claude_user`, else this Mac's account name. Apps opened at login can inherit a `USER`
+    /// that is a directory email with no Claude login, so the environment is never asked.
+    fn claude_user(&self) -> AppResult<String> {
+        let set = self.claude_user.trim();
+        if !set.is_empty() {
+            return Ok(set.to_owned());
+        }
+        nix::unistd::User::from_uid(nix::unistd::getuid())
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .ok_or_else(|| {
+                AppError::Claude(
+                    "couldn't find this Mac's account name; set claude_user in quarterdeck.toml"
+                        .to_owned(),
+                )
+            })
     }
 
     /// Whether script schedules may run. A dev build runs them only when `[dev] run_scripts` is on.
@@ -144,6 +168,25 @@ pub fn load(config: &Config) -> AppResult<Settings> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_set_claude_user_wins() {
+        let s = Settings {
+            claude_user: " oscar ".to_owned(),
+            ..settings()
+        };
+        assert_eq!(s.claude_user().ok().as_deref(), Some("oscar"));
+    }
+
+    #[test]
+    fn an_empty_claude_user_is_this_macs_account_not_the_environment() {
+        let account = nix::unistd::User::from_uid(nix::unistd::getuid())
+            .ok()
+            .flatten()
+            .map(|u| u.name);
+        assert!(account.is_some());
+        assert_eq!(settings().claude_user().ok(), account);
+    }
+
     fn settings() -> Settings {
         let area = |id: &str, node: &str| Area {
             id: id.to_owned(),
@@ -157,6 +200,7 @@ mod tests {
             chat_history_messages: 20,
             claude_command: String::new(),
             claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,

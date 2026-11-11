@@ -100,7 +100,7 @@ or deleted.
 
 - **Config folder** `~/.config/quarterdeck/`, editable by people and agents, re-read on each refresh:
   `quarterdeck.toml` (settings, areas, connectors, sync; plain settings change by name with
-  `set_setting`, which leaves out `claude_command` and `claude_model`), `prompts/*.md` (Quarterdeck's own Claude jobs),
+  `set_setting`, which leaves out `claude_command`, `claude_model` and `claude_user`), `prompts/*.md` (Quarterdeck's own Claude jobs),
   `schedules/<id>.md` (TOML front matter + instructions), `inbox/` (agent-raised urgent items,
   ingested and deleted), `pause.toml` (only while paused). Tools edit `quarterdeck.toml` in place,
   keeping comments, and roll back edits that would break it.
@@ -158,7 +158,10 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
 
 `claude -p` on the user's subscription, with the Quarterdeck MCP tools always allowed. Every run,
 chats and drafts included, is locked to `claude_model` (`--model`, and `CLAUDE_CODE_SUBAGENT_MODEL`
-so its subagents use it too); empty leaves the model to Claude Code. It is found
+so its subagents use it too); empty leaves the model to Claude Code. Every run gets `claude_user`
+as `USER` and `LOGNAME`, so Claude Code finds the login saved under that account; empty uses this
+Mac's account name, never the inherited `USER` (an app opened at login can get a directory email
+that has no login). It is found
 in the usual install folders, else through the user's login shell (so nvm installs work); if it
 can't be found, the error names the program and the setting to fix. Runs stream
 (`--output-format stream-json`): each step goes to a small per-run file in the data folder's `live/`,

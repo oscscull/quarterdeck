@@ -27,6 +27,11 @@ claude_command = "claude"
 # Agents can't change this; edit it here.
 claude_model = ""
 
+# The account Claude Code's login is saved under; every run gets it as USER and LOGNAME. Empty
+# uses this Mac's account name (what `id -un` prints), never the USER Quarterdeck inherited.
+# Agents can't change this; edit it here.
+claude_user = ""
+
 # How long stored agent output lives before it is deleted.
 activity_ttl_days = 7
 run_ttl_days = 14

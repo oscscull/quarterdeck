@@ -1,4 +1,4 @@
-//! Which Claude Code to run, and the model every run is locked to.
+//! Which Claude Code to run, the model every run is locked to, and the account it logs in as.
 
 use tokio::process::Command;
 
@@ -11,11 +11,16 @@ pub struct Program {
     pub command: String,
     /// The model every run uses, subagents included. Empty leaves it to Claude Code.
     pub model: String,
+    /// The account Claude Code finds its login under. Every run gets it as `USER` and `LOGNAME`,
+    /// never the one Quarterdeck inherited.
+    pub user: String,
 }
 
 impl Program {
-    /// Pins `cmd` to the model, so neither Claude Code's defaults nor a subagent can pick another.
+    /// Pins `cmd` to the account and the model, so neither the inherited `USER` nor Claude Code's
+    /// defaults nor a subagent can pick another.
     pub fn lock(&self, cmd: &mut Command) {
+        cmd.env("USER", &self.user).env("LOGNAME", &self.user);
         if self.model.is_empty() {
             return;
         }
@@ -33,6 +38,7 @@ mod tests {
         let program = Program {
             command: "claude".to_owned(),
             model: model.to_owned(),
+            user: "oscar".to_owned(),
         };
         let mut cmd = Command::new("claude");
         program.lock(&mut cmd);
@@ -41,10 +47,12 @@ mod tests {
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
-        seen.extend(
-            std.get_envs()
-                .filter_map(|(k, v)| Some(format!("{}={}", k.to_str()?, v?.to_str()?))),
-        );
+        let mut envs: Vec<String> = std
+            .get_envs()
+            .filter_map(|(k, v)| Some(format!("{}={}", k.to_str()?, v?.to_str()?)))
+            .collect();
+        envs.sort();
+        seen.extend(envs);
         seen
     }
 
@@ -55,13 +63,15 @@ mod tests {
             [
                 "--model",
                 "claude-opus-5-5",
-                "CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-5-5"
+                "CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-5-5",
+                "LOGNAME=oscar",
+                "USER=oscar"
             ]
         );
     }
 
     #[test]
-    fn no_model_leaves_it_to_claude_code() {
-        assert_eq!(args(""), Vec::<String>::new());
+    fn no_model_leaves_it_to_claude_code_but_still_sets_the_account() {
+        assert_eq!(args(""), ["LOGNAME=oscar", "USER=oscar"]);
     }
 }
