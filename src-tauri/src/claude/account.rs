@@ -2,7 +2,8 @@
 
 use crate::error::{AppError, AppResult};
 
-/// This Mac's account name, from the OS account database rather than the environment.
+/// This machine's account name, from the OS account database rather than the environment.
+#[cfg(unix)]
 pub fn this_macs() -> AppResult<String> {
     match nix::unistd::User::from_uid(nix::unistd::getuid()) {
         Ok(Some(user)) => Ok(user.name),
@@ -16,7 +17,21 @@ pub fn this_macs() -> AppResult<String> {
     }
 }
 
-#[cfg(test)]
+/// This machine's account name. Windows has no uid to look up, so it comes from `USERNAME`.
+#[cfg(not(unix))]
+pub fn this_macs() -> AppResult<String> {
+    std::env::var("USERNAME")
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| {
+            AppError::Claude(
+                "couldn't find this machine's account name; set claude_user in quarterdeck.toml"
+                    .to_owned(),
+            )
+        })
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

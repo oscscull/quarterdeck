@@ -45,12 +45,14 @@ tauri-plugin-updater = "2"
 tauri-plugin-single-instance = "2"
 # The home and app-data folders on every platform (Tauri uses it too).
 dirs = "6"
-# This Mac's account name, for the account Claude Code logs in as.
-nix = { version = "0.31", features = ["user"] }
 tiny_http = "0.12.0"
 uuid = { version = "1.28.0", features = ["v4"] }
 # The database engine, over a bundled SQLite.
 based-runtime = { git = "https://github.com/oscscull/baseddsl", default-features = false, features = ["sqlite-rusqlite", "id-gen"] }
+
+# This Mac's account name, for the account Claude Code logs in as. Windows reads USERNAME instead.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["user"] }
 
 [dev-dependencies]
 tokio = { version = "1.54.0", features = ["macros", "rt-multi-thread"] }
