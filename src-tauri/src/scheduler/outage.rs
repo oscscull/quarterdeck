@@ -50,7 +50,14 @@ pub async fn agent_up(handle: &AppHandle, settings: &Settings, now: bool) -> App
     if !settings.may_run_claude() {
         return Ok(true);
     }
-    let claude = settings.claude()?;
+    let claude = match settings.claude() {
+        Ok(claude) => claude,
+        Err(e) => {
+            return report(handle, settings, &e.to_string())
+                .await
+                .map(|()| false);
+        }
+    };
     if !now && waiting(db).await? {
         return Ok(false);
     }
