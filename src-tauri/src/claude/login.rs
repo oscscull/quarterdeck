@@ -10,7 +10,6 @@ use super::Program;
 use crate::cli;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
-const SIGNED_OUT: &str = "Claude Code is not logged in: run `claude` in a terminal and use /login";
 
 /// Why the agent can't run for want of a login, asked as the account runs use. `None` when it's
 /// signed in, and when `program` can't say (an older Claude Code): a run finds out then.
@@ -27,7 +26,14 @@ pub async fn missing(program: &Path, claude: &Program) -> Option<String> {
         .await
         .ok()?
         .ok()?;
-    signed_out(&said.stdout).then(|| SIGNED_OUT.to_owned())
+    signed_out(&said.stdout).then(|| signed_out_as(&claude.user))
+}
+
+fn signed_out_as(user: &str) -> String {
+    format!(
+        "Claude Code is not logged in as `{user}`: log in as that account (`claude`, then /login), \
+         or set claude_user in quarterdeck.toml to the account that is"
+    )
 }
 
 fn signed_out(status: &[u8]) -> bool {
@@ -40,6 +46,13 @@ fn signed_out(status: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_out_names_the_account_and_the_setting() {
+        let why = signed_out_as("oscar");
+        assert!(why.contains("`oscar`") && why.contains("claude_user"));
+        assert!(super::super::reach::unreached(&why));
+    }
 
     #[test]
     fn only_a_clear_no_is_signed_out() {
