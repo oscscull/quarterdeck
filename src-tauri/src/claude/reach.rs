@@ -4,7 +4,7 @@
 
 use tokio::net::TcpStream;
 
-use super::login;
+use super::{Program, login};
 use crate::cli;
 use crate::config::outage::OutageSettings;
 
@@ -45,11 +45,12 @@ pub fn unreached(detail: &str) -> bool {
     UNREACHED.iter().any(|p| detail.contains(p))
 }
 
-/// Why the agent can't run now, or `None` when it can: `command` must exist, each probe answer
-/// and Claude Code be logged in.
-pub async fn check(command: &str, settings: &OutageSettings) -> Option<String> {
+/// Why the agent can't run now, or `None` when it can: its command must exist, each probe answer
+/// and Claude Code be logged in as the account runs use.
+pub async fn check(claude: &Program, settings: &OutageSettings) -> Option<String> {
+    let command = &claude.command;
     // Finding it may ask the login shell, which blocks.
-    let owned = command.to_owned();
+    let owned = command.clone();
     let found = tokio::task::spawn_blocking(move || {
         let program = cli::resolve(&owned);
         program.exists().then_some(program)
@@ -65,7 +66,7 @@ pub async fn check(command: &str, settings: &OutageSettings) -> Option<String> {
             return Some(why);
         }
     }
-    login::missing(&program).await
+    login::missing(&program, claude).await
 }
 
 /// Why `probe` (`host:port`) didn't answer; `None` when it did or is empty.
@@ -119,9 +120,17 @@ mod tests {
         ));
     }
 
+    fn program(command: &str) -> Program {
+        Program {
+            command: command.to_owned(),
+            model: String::new(),
+            user: "oscar".to_owned(),
+        }
+    }
+
     #[tokio::test]
     async fn a_missing_program_fails_the_check() {
-        let why = check("/nowhere/claude", &OutageSettings::default()).await;
+        let why = check(&program("/nowhere/claude"), &OutageSettings::default()).await;
         assert!(why.is_some_and(|w| w.contains("wasn't found")));
     }
 
@@ -132,6 +141,6 @@ mod tests {
             github_probe: String::new(),
             ..OutageSettings::default()
         };
-        assert_eq!(check("/bin/sh", &settings).await, None);
+        assert_eq!(check(&program("/bin/sh"), &settings).await, None);
     }
 }

@@ -11,7 +11,7 @@ use super::outage::OutageSettings;
 use super::sync::SyncSettings;
 use super::turns::TurnSettings;
 use super::updates::UpdateSettings;
-use crate::claude::Program;
+use crate::claude::{Program, account};
 use crate::error::{AppError, AppResult};
 use crate::profile;
 
@@ -38,6 +38,8 @@ pub struct Settings {
     pub claude_command: String,
     /// The model every headless run is locked to (`--model`). Empty leaves it to Claude Code.
     pub claude_model: String,
+    /// The account Claude Code's login is saved under (see `Program::user`); empty uses this Mac's.
+    pub claude_user: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
     pub event_ttl_days: i64,
@@ -69,6 +71,7 @@ impl Default for Settings {
             chat_history_messages: 20,
             claude_command: "claude".to_owned(),
             claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,
@@ -100,10 +103,14 @@ impl Settings {
             .map_or(self.node.as_str(), |a| a.node.as_str())
     }
 
-    /// How to run Claude, locked to `claude_model`. A dev build runs it only when `[dev]
-    /// run_claude` is on.
+    /// Whether this build may run Claude. A dev build runs it only when `[dev] run_claude` is on.
+    pub const fn may_run_claude(&self) -> bool {
+        !profile::DEV || self.dev.run_claude
+    }
+
+    /// How to run Claude, locked to `claude_model` and `claude_user`.
     pub fn claude(&self) -> AppResult<Program> {
-        if profile::DEV && !self.dev.run_claude {
+        if !self.may_run_claude() {
             return Err(AppError::Claude(
                 "this dev build doesn't run Claude; set [dev] run_claude = true in its quarterdeck.toml"
                     .to_owned(),
@@ -112,7 +119,18 @@ impl Settings {
         Ok(Program {
             command: self.claude_command.clone(),
             model: self.claude_model.clone(),
+            user: self.claude_user()?,
         })
+    }
+
+    /// `claude_user`, else this Mac's account name.
+    fn claude_user(&self) -> AppResult<String> {
+        let set = self.claude_user.trim();
+        if set.is_empty() {
+            account::this_macs()
+        } else {
+            Ok(set.to_owned())
+        }
     }
 
     /// Whether script schedules may run. A dev build runs them only when `[dev] run_scripts` is on.
@@ -144,6 +162,20 @@ pub fn load(config: &Config) -> AppResult<Settings> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_set_claude_user_wins() {
+        let s = Settings {
+            claude_user: " oscar ".to_owned(),
+            ..settings()
+        };
+        assert_eq!(s.claude_user().ok().as_deref(), Some("oscar"));
+    }
+
+    #[test]
+    fn an_empty_claude_user_is_this_macs_account() {
+        assert_eq!(settings().claude_user().ok(), account::this_macs().ok());
+    }
+
     fn settings() -> Settings {
         let area = |id: &str, node: &str| Area {
             id: id.to_owned(),
@@ -157,6 +189,7 @@ mod tests {
             chat_history_messages: 20,
             claude_command: String::new(),
             claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
             event_ttl_days: 3,

@@ -3294,6 +3294,7 @@ dependencies = [
  "croner",
  "dirs 6.0.0",
  "ical",
+ "nix",
  "rrule",
  "schemars 0.8.22",
  "serde",

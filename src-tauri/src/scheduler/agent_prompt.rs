@@ -60,7 +60,7 @@ async fn job_for(
 
 pub async fn carry_on(handle: &AppHandle, settings: &Settings, item: &WorkItem) -> AppResult<()> {
     // A build that may not run the agent would only fail the same run every tick.
-    if settings.claude().is_err() {
+    if !settings.may_run_claude() {
         return Ok(());
     }
     let app = handle.state::<App>();
