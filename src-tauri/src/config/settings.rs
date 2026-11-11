@@ -120,8 +120,8 @@ impl Settings {
         })
     }
 
-    /// `claude_user`, else this Mac's account name. Apps opened at login can inherit a `USER`
-    /// that is a directory email with no Claude login, so the environment is never asked.
+    /// `claude_user`, else this Mac's account name from the OS account database, never the
+    /// environment.
     fn claude_user(&self) -> AppResult<String> {
         let set = self.claude_user.trim();
         if !set.is_empty() {

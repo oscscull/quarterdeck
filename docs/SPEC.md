@@ -160,8 +160,7 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
 chats and drafts included, is locked to `claude_model` (`--model`, and `CLAUDE_CODE_SUBAGENT_MODEL`
 so its subagents use it too); empty leaves the model to Claude Code. Every run gets `claude_user`
 as `USER` and `LOGNAME`, so Claude Code finds the login saved under that account; empty uses this
-Mac's account name, never the inherited `USER` (an app opened at login can get a directory email
-that has no login). It is found
+Mac's account name, never the inherited `USER`. It is found
 in the usual install folders, else through the user's login shell (so nvm installs work); if it
 can't be found, the error names the program and the setting to fix. Runs stream
 (`--output-format stream-json`): each step goes to a small per-run file in the data folder's `live/`,
