@@ -114,8 +114,10 @@ async fn prompt_for(job: &Job) -> AppResult<String> {
 
 /// How to run a job: `mode` applies to work in a project's worktree, `run` is its record.
 struct How {
-    /// An error when this build may not run Claude; the run records it as failed.
+    /// An error when Claude can't be set up to run; the run records it as failed.
     command: AppResult<Program>,
+    /// Whether this build may run Claude at all; a dev build that may not hands the turn back.
+    may_run: bool,
     mode: String,
     run: i64,
     started: DateTime<Utc>,
@@ -184,7 +186,7 @@ async fn work(handle: AppHandle, job: Job, how: How) {
         what: &job.what,
         summary: &summary,
         started: how.started,
-        may_run: how.command.is_ok(),
+        may_run: how.may_run,
         run: how.run,
         new_session: matches!(job.thread, Thread::Start(_)),
     };
@@ -207,6 +209,7 @@ pub async fn run(handle: &AppHandle, settings: &Settings, job: Job) -> AppResult
     let started = Utc::now();
     let how = How {
         command: settings.claude(),
+        may_run: settings.may_run_claude(),
         mode: settings.project_permission_mode.clone(),
         run: start_record(handle, settings, &job, started).await?,
         started,

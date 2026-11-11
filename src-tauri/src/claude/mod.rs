@@ -1,5 +1,6 @@
 //! Runs headless Claude Code (`claude -p`) on the user's own subscription.
 
+pub mod account;
 pub mod connect;
 pub mod draft;
 mod follow;

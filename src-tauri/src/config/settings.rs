@@ -11,7 +11,7 @@ use super::outage::OutageSettings;
 use super::sync::SyncSettings;
 use super::turns::TurnSettings;
 use super::updates::UpdateSettings;
-use crate::claude::Program;
+use crate::claude::{Program, account};
 use crate::error::{AppError, AppResult};
 use crate::profile;
 
@@ -38,8 +38,7 @@ pub struct Settings {
     pub claude_command: String,
     /// The model every headless run is locked to (`--model`). Empty leaves it to Claude Code.
     pub claude_model: String,
-    /// The account Claude Code's login is saved under (`USER` and `LOGNAME` for every run). Empty
-    /// uses this Mac's account name; the inherited `USER` is never used.
+    /// The account Claude Code's login is saved under (see `Program::user`); empty uses this Mac's.
     pub claude_user: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
@@ -124,22 +123,13 @@ impl Settings {
         })
     }
 
-    /// `claude_user`, else this Mac's account name from the OS account database, never the
-    /// environment.
+    /// `claude_user`, else this Mac's account name.
     fn claude_user(&self) -> AppResult<String> {
         let set = self.claude_user.trim();
-        if !set.is_empty() {
-            return Ok(set.to_owned());
-        }
-        match nix::unistd::User::from_uid(nix::unistd::getuid()) {
-            Ok(Some(user)) => Ok(user.name),
-            Ok(None) => Err(AppError::Claude(
-                "this Mac's account isn't in its account database; set claude_user in quarterdeck.toml"
-                    .to_owned(),
-            )),
-            Err(e) => Err(AppError::Claude(format!(
-                "couldn't look up this Mac's account name ({e}); set claude_user in quarterdeck.toml"
-            ))),
+        if set.is_empty() {
+            account::this_macs()
+        } else {
+            Ok(set.to_owned())
         }
     }
 
@@ -182,13 +172,8 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_claude_user_is_this_macs_account_not_the_environment() {
-        let account = nix::unistd::User::from_uid(nix::unistd::getuid())
-            .ok()
-            .flatten()
-            .map(|u| u.name);
-        assert!(account.is_some());
-        assert_eq!(settings().claude_user().ok(), account);
+    fn an_empty_claude_user_is_this_macs_account() {
+        assert_eq!(settings().claude_user().ok(), account::this_macs().ok());
     }
 
     fn settings() -> Settings {
