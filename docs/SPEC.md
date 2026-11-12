@@ -49,15 +49,19 @@ The window title shows the running version, so it's clear when an update has lan
   (opens to the list), To do (things only the user can do, each with an optional link), and "From
   Claude". Under Priorities, one line counts parked work and says when the next is back; it opens
   Priorities.
+- **Briefing**: a plain account of the work, so the user and the agents share one picture (see
+  Projects and the Briefing). Everything (combined) or one project at a time, behind the area switch.
 - **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today. Each row
   shows its stage, whose turn it is, its state and (once started) how long it has been open; a filter
   narrows the list to one side's turn, and ranking still works within it. Below, **Parked**: soonest
   back first, each with its note, when it's back and to whom, and a countdown.
 - **Board**: items by stage; parked work is left out.
 - **An item** opens with what's needed from the user when it's their turn (the need, or the
-  questions asked), the reply box, then its state, links and (collapsed) history.
+  questions asked), the reply box, then its state, links and (collapsed) history: its record, with
+  the trace folded under it.
 - **Agent**: every item that is the agent's turn, and what's running (each run's latest step, live; click for its steps so far), every schedule (toggle, edit, delete, run now, create by describing
-  it), missed or failed runs, Pause all, recent events and what they started, connector and peer
+  it), missed or failed runs, Pause all, recent events that started something (a toggle shows the
+  rest), connector and peer
   status, and the MCP connect command.
 - **Ask Claude** bubble on every view, given that view's data and the Quarterdeck tools, settings
   ones included, so any setting can be changed by asking. One conversation runs across views until
@@ -96,6 +100,39 @@ becomes the reason it came back, so the user's need or the agent's prompt says w
 queue passes over parked up-next work. Nothing parks for good: work nobody will pick up is closed
 or deleted.
 
+## Projects and the Briefing
+
+A **project** (`create_project`, `update_project`) groups items in one area under an aim, a plain
+sentence saying what the work is for. Its state is moving, stalled, quiet or done; done projects are
+deleted after `done_item_ttl_days`, leaving their items in no project. An item is in at most one
+project (`update_item`'s `project`).
+
+An item's history is **record** or **trace**. Records are plain sentences written for people, tagged
+why, decision, change, blocked, correction or delivered (`add_record`; the user's answers and Tell
+Claude messages land as records too). Everything else (created, stage, status, label, turn,
+Quarterdeck's own notes) is trace, kept as data and deleted after `trace_ttl_days`.
+
+A **reference** (`add_reference`) is a source the briefing cites: something the user said, a ticket,
+PR, comment, Slack thread, doc or commit, with the data point that matters as its quote, linked to
+items and a project. One nothing open uses (no open item, no live project) is deleted after
+`[briefing] reference_ttl_days`.
+
+The **briefing** of an area is a combined one plus one per active project, each in three bands:
+just done (work finished in the last `just_done_days`), in flight, and next. It says plainly what
+was wrong or needed and why the work changed, and cites references as `[ref:<id>]`. Each tick, a
+fingerprint of an area's inputs (projects, items' titles, stages and projects, parking, records,
+references) is compared with the last; once it has changed and then held for
+`debounce_minutes`, `prompts/briefing.md` runs once for the area (as a run named Briefing, failures
+raised as urgent). The run reads `get_briefing_inputs`, adds a `delivered` record to finished items
+that lack one, and saves with `write_briefing`, which refuses projects or references from elsewhere.
+Each machine writes the areas it runs; the tab merges every machine's (`get_briefing`) band by
+band, numbering citations in reading order, and a citation opens its reference in a card.
+
+Under the briefing, the user corrects it or adds context. That is a conversation
+(`prompts/correct.md`, kept only in the window) on the machine holding what's shown: Claude saves
+what the user said as references, proposes any item changes and makes only those agreed, then calls
+`refresh_briefing`, which makes the area due at once.
+
 ## Where things live
 
 - **Config folder** `~/.config/quarterdeck/`, editable by people and agents, re-read on each refresh:
@@ -107,8 +144,8 @@ or deleted.
 - **Database** (`quarterdeck.db`, SQLite through [Based](https://github.com/oscscull/baseddsl)): live
   state only. Tables and every query are declared in `src-tauri/schema/`; migrations in
   `src-tauri/migrations/` are built into the binary and applied when the app or MCP server opens
-  the database. Activity, finished runs, done to-dos, done items with their history, and past
-  meetings all expire. The first start of a Based build copies a pre-Based `quarterdeck.sqlite`
+  the database. Activity, finished runs, done to-dos, done items with their history, history trace,
+  unused references, done projects and past meetings all expire. The first start of a Based build copies a pre-Based `quarterdeck.sqlite`
   across once and keeps it as `quarterdeck.sqlite.imported`.
 - **Dev builds** (debug, `npm run tauri dev`) are a separate app: id `com.oscscull.quarterdeck.dev`,
   config `~/.config/quarterdeck-dev/`, their own data folder, MCP name `quarterdeck-dev`, a banner on
@@ -301,14 +338,14 @@ no transcript there; one stored that Claude can no longer resume is let go, note
 and the work starts a new session.
 
 Work Quarterdeck starts on a PR (fixing CI, acting on an answer) or on an item whose link is a
-GitHub PR, issue or repo runs in that repo's project when `[[projects]]` maps it to a checkout
-(`set_project`): in a git worktree per item under the data folder, in the permission mode
+GitHub PR, issue or repo runs in that repo's checkout when `[[repos]]` maps it to one (`set_repo`;
+`[[projects]]`, the older name, is still read): in a git worktree per item under the data folder, in the permission mode
 `project_permission_mode` sets (default `auto`, as in the user's own sessions), with the
-project's `.claude/settings.local.json` copied in before every run. A PR's worktree is detached at its head; an
+repo's `.claude/settings.local.json` copied in before every run. A PR's worktree is detached at its head; an
 issue's is a new branch `issue-<n>` off the latest default branch, and the first run there also
 gets the issue's text (`prompts/issue-workspace.md`); a repo's is a new branch
 `quarterdeck/<item>` off it (`prompts/new-workspace.md`). The user's checkout is untouched. Since a
-project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes. First,
+repo's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes. First,
 if the worktree has changes no commit holds (bar the copied settings file), the turn goes straight
 back to the agent to commit them, whoever it was handed to, and nothing is published; after
 `failure_retries` times in a row it's the user's, naming the worktree. Then, if no question on the
@@ -317,9 +354,9 @@ opens a PR (closing the issue, titled from the first commit) and makes the item 
 CI results follow it. A push that fails keeps the commits in the worktree: with no connection the
 agent gets the turn back once it returns; otherwise the agent gets it to fix what stopped it, up
 to `failure_retries` times in a row, then it's raised as urgent and the user's. After every run,
-finished or failed, the project's `clean_after_run` folders (build output git ignores, relative to
+finished or failed, the repo's `clean_after_run` folders (build output git ignores, relative to
 the repo root) are deleted from the worktree, so worktrees waiting on review hold none. Worktrees are
-removed once their item is done. Repos with no project get a run that can read CI but not change
+removed once their item is done. Repos with no checkout get a run that can read CI but not change
 code.
 
 `[queue]` lists items Claude works on one at a time (`set_queue`, `get_queue`). The first not yet

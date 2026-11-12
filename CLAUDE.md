@@ -46,7 +46,8 @@ cd src-tauri && cargo fmt --check                          # format check
 - `src/`: Svelte 5 frontend. `views/` one per tab, `components/` shared, `lib/` logic, `copy/` text.
 - `src-tauri/src/`: Rust. `domain/` types, `store/` database access, `config/` files, `cron/`, `views/` screen
   data, `commands/` thin Tauri handlers, `claude/` headless runs, `scheduler/`, `connectors/`,
-  `mcp/` (the MCP server and its tools), `peers/` (sync between machines), `alerts/`, `desktop/`.
+  `mcp/` (the MCP server and its tools), `peers/` (sync between machines), `briefing/` (writing and
+  showing the Briefing), `alerts/`, `desktop/`.
 - `src-tauri/schema/`: the database in Based (models and every query), one folder per domain.
   `src-tauri/migrations/`: generated from it with `based migrate gen`; never edit an applied one.
 - `src-tauri/defaults/config/`: default config files, embedded in the binary.

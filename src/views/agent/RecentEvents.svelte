@@ -13,7 +13,10 @@
   let { events, schedules, now }: Props = $props();
 
   const SHOWN = 10;
-  const shown = $derived(events.filter(inArea).slice(0, SHOWN));
+  // Most events start nothing; by default only those that did are listed.
+  let all = $state(false);
+  const inView = $derived(events.filter(inArea));
+  const shown = $derived((all ? inView : inView.filter((e) => e.started.length > 0)).slice(0, SHOWN));
 
   function startedText(e: FiredEvent): string {
     if (e.started.length === 0) return t("events.startedNothing");
@@ -22,9 +25,15 @@
   }
 </script>
 
-{#if shown.length > 0}
+{#if inView.length > 0}
   <section aria-label={t("events.title")}>
-    <h2 class="section-label">{t("events.title")}</h2>
+    <div class="head">
+      <h2 class="section-label">{t("events.title")}</h2>
+      <button type="button" class="link toggle" onclick={() => (all = !all)}>
+        {all ? t("events.showStarted") : t("events.showAll", { n: inView.length })}
+      </button>
+    </div>
+    {#if shown.length === 0}<p class="hint none">{t("events.noneStarted")}</p>{/if}
     <ul>
       {#each shown as e (`${e.node ?? ""}${e.id}`)}
         <li>
@@ -42,6 +51,22 @@
 <style>
   section {
     margin-top: 44px;
+  }
+
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .toggle,
+  .none {
+    font-size: 13px;
+  }
+
+  .none {
+    margin-top: 8px;
   }
 
   ul {
