@@ -57,6 +57,7 @@ mod tests {
             number: 3,
             kind: Kind::Issue,
             dir: "/wt/app-3".into(),
+            clean_after_run: Vec::new(),
         };
         assert!(thread_for(None, None).is_none());
         assert!(matches!(

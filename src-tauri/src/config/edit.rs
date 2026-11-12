@@ -98,13 +98,16 @@ pub fn set_areas(config: &Config, areas: &[Area]) -> AppResult<()> {
     })
 }
 
-/// Adds a project, or changes the folder of the one for the same repo.
+/// Adds a project, or replaces the one for the same repo.
 pub fn upsert_project(config: &Config, project: &Project) -> AppResult<()> {
     edit(config, |doc| {
         let list = tables(doc.as_table_mut(), "projects")?;
         let mut t = Table::new();
         t.insert("repo", value(&project.repo));
         t.insert("path", value(&project.path));
+        if !project.clean_after_run.is_empty() {
+            t.insert("clean_after_run", strings(&project.clean_after_run));
+        }
         replace_or_push(list, "repo", &project.repo, t);
         Ok(())
     })

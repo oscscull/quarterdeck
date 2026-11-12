@@ -142,7 +142,9 @@ gets the issue's text (`prompts/issue-workspace.md`). The user's checkout is unt
 project's sandbox may keep Claude off GitHub, Quarterdeck does that side when a run finishes and no
 question on the item is open: it pushes commits the branch doesn't have and, for an issue, opens a
 PR closing it (titled from the first commit) and makes the item that PR's, in review, so syncs and
-CI results follow it. A push that fails is raised as urgent and the turn goes to the user. Worktrees are
+CI results follow it. A push that fails is raised as urgent and the turn goes to the user. After every
+run, finished or failed, the project's `clean_after_run` folders (build output, relative to the repo
+root) are deleted from the worktree, so worktrees waiting on review hold no build output. Worktrees are
 removed once their item is done. Repos with no project get a run that can read CI but not change
 code.
 
