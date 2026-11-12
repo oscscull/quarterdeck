@@ -12,6 +12,10 @@ pub struct Project {
     pub repo: String,
     /// The checkout's folder. `~` means the home folder.
     pub path: String,
+    /// Folders inside a worktree, relative to its root, deleted after every run there, e.g. build
+    /// output such as `target` or `dist`. The next run rebuilds what it needs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clean_after_run: Vec<String>,
 }
 
 impl Project {

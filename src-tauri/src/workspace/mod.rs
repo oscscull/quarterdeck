@@ -1,7 +1,9 @@
 //! Work Quarterdeck starts on a PR, or on an item linking a GitHub issue or repo, runs in that repo's
 //! project, in a git worktree of its own per item. The user's checkout is never touched, and the project's
-//! own Claude settings apply. A worktree lives while its item is open.
+//! own Claude settings apply. A worktree lives while its item is open; the project's
+//! `clean_after_run` folders are deleted from it after every run.
 
+mod clean;
 mod git;
 mod issue;
 mod missing;
@@ -12,6 +14,7 @@ mod uncommitted;
 
 use std::path::PathBuf;
 
+pub use clean::clean;
 pub use git::prepare;
 pub use issue::text as issue_text;
 pub use missing::Missing;
@@ -40,6 +43,8 @@ pub struct Workspace {
     pub dir: PathBuf,
     /// The branch Quarterdeck makes for the work. None for a PR, which has its own.
     pub branch: Option<String>,
+    /// The project's `clean_after_run` folders, deleted from `dir` after every run.
+    pub clean_after_run: Vec<String>,
 }
 
 impl Workspace {
@@ -96,6 +101,7 @@ pub fn locate(settings: &Settings, item: &WorkItem) -> AppResult<Located> {
         repo: t.repo,
         kind: t.kind,
         dir: root()?.join(folder(&item.id)),
+        clean_after_run: project.clean_after_run.clone(),
     }))
 }
 
@@ -158,6 +164,7 @@ mod tests {
             projects: vec![Project {
                 repo: "OscScull/BasedDSL".to_owned(),
                 path: "/code/baseddsl".to_owned(),
+                clean_after_run: Vec::new(),
             }],
             ..Settings::default()
         }

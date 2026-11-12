@@ -179,6 +179,10 @@ async fn work(handle: AppHandle, job: Job, how: How) {
     {
         super::handoff::after_run(&handle, (&job.item_id, ws), &how.limits).await;
     }
+    if let Some(ws) = &job.workspace {
+        // Only disk space is at stake, and the next run cleans again.
+        drop(workspace::clean(ws));
+    }
     // The run record is for display; losing it changes nothing about the item.
     drop(runs::finish(&handle.state::<App>().db, how.run, outcome, &summary).await);
     let ended = run_turn::Ended {

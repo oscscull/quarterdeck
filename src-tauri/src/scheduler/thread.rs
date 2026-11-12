@@ -58,6 +58,7 @@ mod tests {
             kind: Kind::Issue(3),
             dir: "/wt/app-3".into(),
             branch: Some("issue-3".to_owned()),
+            clean_after_run: Vec::new(),
         };
         assert!(matches!(
             thread_for(None, None),

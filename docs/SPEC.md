@@ -316,7 +316,9 @@ item is open, it pushes commits the branch doesn't have and, for an issue or rep
 opens a PR (closing the issue, titled from the first commit) and makes the item that PR's, in review, so syncs and
 CI results follow it. A push that fails keeps the commits in the worktree: with no connection the
 agent gets the turn back once it returns; otherwise the agent gets it to fix what stopped it, up
-to `failure_retries` times in a row, then it's raised as urgent and the user's. Worktrees are
+to `failure_retries` times in a row, then it's raised as urgent and the user's. After every run,
+finished or failed, the project's `clean_after_run` folders (build output git ignores, relative to
+the repo root) are deleted from the worktree, so worktrees waiting on review hold none. Worktrees are
 removed once their item is done. Repos with no project get a run that can read CI but not change
 code.
 
