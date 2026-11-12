@@ -37,6 +37,7 @@ impl Raised {
             area,
             raised_at: at,
             schedule_id: self.schedule_id,
+            run_id: None,
         }
     }
 }

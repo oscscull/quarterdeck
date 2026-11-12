@@ -6,11 +6,13 @@
   interface Props {
     title: string;
     subtitle?: string;
+    /** For dialogs that carry a lot of reading, like an item's detail. */
+    wide?: boolean;
     onClose: () => void;
     children: Snippet;
   }
 
-  let { title, subtitle, onClose, children }: Props = $props();
+  let { title, subtitle, wide = false, onClose, children }: Props = $props();
 
   function onKey(event: KeyboardEvent): void {
     if (event.key === "Escape") onClose();
@@ -20,7 +22,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="backdrop" role="presentation" onclick={(e) => e.target === e.currentTarget && onClose()}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-label={title} tabindex="-1">
+  <div class="dialog" class:wide role="dialog" aria-modal="true" aria-label={title} tabindex="-1">
     <div class="head">
       <div>
         <h2>{title}</h2>
@@ -55,6 +57,10 @@
     display: flex;
     flex-direction: column;
     gap: 18px;
+  }
+
+  .dialog.wide {
+    max-width: 820px;
   }
 
   .head {

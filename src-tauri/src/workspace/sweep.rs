@@ -40,7 +40,7 @@ pub fn sweep(items: &[WorkItem]) -> AppResult<()> {
         let name = entry.file_name().to_string_lossy().into_owned();
         let open = items
             .iter()
-            .any(|i| folder(&i.id) == name && i.stage != Stage::Done);
+            .any(|i| folder(&i.id) == name && i.stage() != Stage::Done);
         if !open {
             remove(&entry.path())?;
         }

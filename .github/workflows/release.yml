@@ -86,6 +86,13 @@ jobs:
             conf.bundle.createUpdaterArtifacts = true;
             fs.writeFileSync(path, JSON.stringify(conf, null, 2));
           '
+      # A stable signature, so macOS keeps its permission answers across updates.
+      - name: Load the macOS signing certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: bash scripts/ci-macos-keychain.sh
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

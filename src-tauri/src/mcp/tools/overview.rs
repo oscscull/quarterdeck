@@ -14,7 +14,8 @@ pub fn tools() -> Vec<Tool> {
         async_tool(
             "get_overview",
             "Everything on the user's Today screen: upcoming meetings, the asks that need them on \
-             their highest-ranked work, to-dos, urgent items and recent updates. Start here.",
+             their highest-ranked work, to-dos, GitHub issues waiting to be triaged, urgent items, \
+             recent updates, and `outage` while the agent can't run at all. Start here.",
             overview,
         ),
         tool(
@@ -25,8 +26,9 @@ pub fn tools() -> Vec<Tool> {
         ),
         tool(
             "get_config_info",
-            "Where Quarterdeck's editable files live, for changes the tools don't cover: renaming or \
-             adding areas, TTLs, prompts used by Quarterdeck's own Claude.",
+            "Where Quarterdeck's editable files live, for changes the tools don't cover, such as the \
+             prompts Quarterdeck's own Claude uses. Prefer the tools: set_setting covers limits, TTLs, \
+             sync intervals, alerts and updates.",
             config_info,
         ),
     ]
@@ -47,6 +49,7 @@ async fn overview(ctx: Ctx, args: OverviewArgs) -> AppResult<TodayView> {
     view.priorities.retain(|p| keep(&p.area));
     view.priorities.truncate(limit);
     view.todos.retain(|t| keep(&t.area));
+    view.triage.retain(|t| keep(&t.area));
     view.urgent.retain(|u| keep(&u.area));
     view.activity.retain(|a| keep(&a.area));
     Ok(view)
@@ -80,7 +83,7 @@ fn config_info(ctx: &Ctx, _: NoArgs) -> AppResult<ConfigInfo> {
     Ok(ConfigInfo {
         folder: ctx.config.root().display().to_string(),
         files: [
-            "quarterdeck.toml: this machine's name, areas ([[areas]] with id, name, color, node), limits and TTLs",
+            "quarterdeck.toml: this machine's name, areas ([[areas]] with id, name, color, node), connectors, limits and TTLs",
             "schedules/<id>.md: one per recurring job (prefer the schedule tools)",
             "prompts/*.md: prompts Quarterdeck's built-in Claude uses",
             "inbox/<name>.toml: drop title/detail/area to raise an urgent item (or use raise_urgent)",

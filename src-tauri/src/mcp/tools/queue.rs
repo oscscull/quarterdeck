@@ -11,7 +11,7 @@ use crate::store::items;
 
 const SET: &str = "Sets the items Claude works on one at a time, in order, by item id (replacing \
 the list). The first not yet in review or done starts when it's up next, as if the user told Claude \
-to work on it; the next waits until it's in review or done. An item linking a GitHub issue \
+to work on it (parked or waiting up-next work is passed over until it can start); the next waits until it's in review or done. An item linking a GitHub issue \
 (https://github.com/<owner>/<repo>/issues/<n>) in a repo with a project (set_project) gets its own \
 branch and worktree, and Quarterdeck pushes it and opens a PR closing the issue when Claude finishes. \
 An empty list clears the queue.";
@@ -55,7 +55,7 @@ async fn get(ctx: Ctx, _: NoArgs) -> AppResult<Queue> {
         .map(|id| {
             let item = all.iter().find(|i| i.id == id);
             Entry {
-                stage: item.map(|i| i.stage),
+                stage: item.map(crate::domain::item::WorkItem::stage),
                 state_label: item.map(|i| i.state_label.clone()).unwrap_or_default(),
                 id,
             }

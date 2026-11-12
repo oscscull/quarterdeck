@@ -4,6 +4,7 @@ use serde::Deserialize;
 use super::super::ctx::Ctx;
 use super::super::tool::{Tool, async_tool};
 use super::in_area;
+use crate::claude::sessions;
 use crate::domain::ask::Ask;
 use crate::domain::session::SessionRef;
 use crate::domain::turn::Turn;
@@ -18,19 +19,18 @@ pub fn tools() -> Vec<Tool> {
         async_tool(
             "list_asks",
             "Everything that needs the user, in item rank order: questions raised on an item \
-             (kind `ask`), else the item itself when it's in flight and their turn (kind `yours`). \
-             Today shows the first few.",
+             (kind `ask`), else the item itself when it's their turn (kind `yours`, with `need`: \
+             what's wanted from them). Today shows the first few.",
             list,
         ),
         async_tool(
             "add_ask",
             "Asks the user something about an item: a design fork, a question you can't answer. \
-             It makes the item the user's turn, and appears in their Priorities if the item ranks \
-             high enough. Put the question in one \
+             It makes the item the user's turn, with the question \
+             as what's needed, and appears on Today if the item ranks high enough. Put the question in one \
              line and the background in `context`. Offer `options` when the answer is a choice \
-             (e.g. [\"Yes\", \"No\"]); they can always write an answer instead. Pass your session \
-             id and working directory so Quarterdeck can resume you with the answer; don't wait or poll \
-             for it. Answers are also kept on the item's history.",
+             (e.g. [\"Yes\", \"No\"]); they can always write an answer instead. Quarterdeck resumes \
+             your session with the answer; don't wait or poll for it. Answers are also kept on the item's history.",
             add,
         ),
         async_tool(
@@ -78,7 +78,8 @@ struct AddArgs {
     /// Choices to answer with, e.g. `["Yes", "No"]`. Leave out for a written answer.
     #[serde(default)]
     options: Vec<String>,
-    /// Your Claude Code session, so the answer can resume you.
+    /// Usually left out: the answer resumes your Claude Code session, which Quarterdeck reads
+    /// itself. A session given must exist on this machine.
     session: Option<SessionRef>,
 }
 
@@ -89,12 +90,12 @@ async fn add(ctx: Ctx, args: AddArgs) -> AppResult<()> {
         question: args.question,
         context: args.context,
         options: args.options,
-        asker: args.session,
+        asker: sessions::resolve(args.session)?,
     };
     items::get(&ctx.db, &ask.item_id).await?;
     let limits = ctx.settings()?.turns;
     let why = format!("asked: {}", ask.question);
-    let pass = Pass::to(Turn::You, why);
+    let pass = Pass::to(Turn::You, why).needing(ask.question.clone());
     turns::pass(&ctx.db, &ask.item_id, pass, Clock::now(&limits)).await?;
     asks::insert(&ctx.db, &ask).await.map(drop)
 }

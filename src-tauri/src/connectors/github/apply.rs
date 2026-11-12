@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 use super::fate::Fate;
 use super::fetch::Pr;
 use super::snapshot::{self, Snapshot};
-use super::turn;
+use super::turn::{self, Waits};
+use crate::config::github::GithubSettings;
 use crate::config::turns::TurnSettings;
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, WorkItem};
@@ -48,28 +49,39 @@ fn input(id: String, s: &Snapshot, area: String, link: Option<String>) -> ItemIn
 pub async fn apply(
     db: &Db,
     pr: &Pr,
-    (area, limits): (&str, &TurnSettings),
+    (area, limits, github): (&str, &TurnSettings, &GithubSettings),
     now: DateTime<Utc>,
 ) -> AppResult<Vec<EventKind>> {
     let ext = external_id(pr);
     let new = snapshot::of(pr);
+    let waits = Waits {
+        owned: &new.owned,
+        claude_fixes: snapshot::claude_fixes(&new, github),
+    };
     let old: Option<Snapshot> = sync_state::get(db, SOURCE, &ext)
         .await?
         .and_then(|json| serde_json::from_str(&json).ok());
-    match items::by_external(db, SOURCE, &ext).await? {
+    let existing = items::by_external(db, SOURCE, &ext).await?;
+    // An item that has the PR but no snapshot of it got the PR when Quarterdeck opened it.
+    let adopted = existing.is_some() && old.is_none();
+    match existing {
         None => {
             let id = create(db, pr, area, now).await?;
-            turn::follow(db, &id, &new.owned, Clock { limits, now }).await?;
+            turn::follow(db, &id, waits, Clock { limits, now }).await?;
         }
         Some(item) if old.as_ref().map(|o| &o.owned) != Some(&new.owned) => {
             let id = work::save(db, input(item.id, &new, item.area, item.link), now).await?;
-            turn::follow(db, &id, &new.owned, Clock { limits, now }).await?;
+            turn::follow(db, &id, waits, Clock { limits, now }).await?;
         }
         Some(_) => {}
     }
     note_changes(db, &ext, (old.as_ref(), &new), now).await?;
     sync_state::set(db, SOURCE, &ext, &serde_json::to_string(&new)?).await?;
-    Ok(snapshot::events(old.as_ref(), &new))
+    Ok(if adopted {
+        snapshot::adopted(&new)
+    } else {
+        snapshot::events(old.as_ref(), &new)
+    })
 }
 
 /// Adds informational check results to the item's history the first time each is seen.
@@ -107,7 +119,7 @@ pub async fn unseen(db: &Db, open: &HashSet<String>) -> AppResult<Vec<String>> {
     Ok(items::from_source(db, SOURCE)
         .await?
         .into_iter()
-        .filter(|i| i.stage != Stage::Done)
+        .filter(|i| i.stage() != Stage::Done)
         .filter_map(|i| i.external_id)
         .filter(|ext| !open.contains(ext))
         .collect())
@@ -152,29 +164,39 @@ mod tests {
             comments,
             reviewers: super::super::fetch::Reviewers::Requested,
             reviewer_names: Vec::new(),
+            closes: Vec::new(),
+            base: super::super::fetch::Base::Current,
             checks: Vec::new(),
             notes: Vec::new(),
         }
     }
 
+    /// Applies `pr` in the `work` area with default settings.
+    async fn sync(db: &Db, pr: &Pr) -> AppResult<Vec<EventKind>> {
+        let github = GithubSettings::default();
+        apply(
+            db,
+            pr,
+            ("work", &TurnSettings::default(), &github),
+            Utc::now(),
+        )
+        .await
+    }
+
     #[tokio::test]
     async fn syncs_keep_edits_until_github_changes() {
         let db = Db::in_memory().await;
-        let limits = TurnSettings::default();
-        apply(&db, &pr(0), ("work", &limits), Utc::now())
-            .await
-            .unwrap();
+        sync(&db, &pr(0)).await.unwrap();
         let waiting = items::get(&db, "app#7").await.unwrap();
-        assert_eq!(
-            (waiting.turn, waiting.waiting_on.as_deref()),
-            (crate::domain::turn::Turn::Others, Some("reviewers"))
-        );
+        let reviewers = crate::domain::life::Whose::Others {
+            waiting_on: "reviewers".to_owned(),
+            then: None,
+        };
+        assert_eq!(waiting.life.whose(), Some(&reviewers));
         let mut edited = items::get(&db, "app#7").await.unwrap();
         edited.state_label = "Sam is on holiday".to_owned();
         items::save(&db, &edited).await.unwrap();
-        let events = apply(&db, &pr(1), ("work", &limits), Utc::now())
-            .await
-            .unwrap();
+        let events = sync(&db, &pr(1)).await.unwrap();
         assert_eq!(events, [EventKind::PrNewComments]);
         assert_eq!(
             items::get(&db, "app#7").await.unwrap().state_label,
@@ -186,7 +208,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            items::get(&db, "app#7").await.unwrap().stage,
+            items::get(&db, "app#7").await.unwrap().stage(),
             Stage::InReview
         );
         close(&db, "me/app#7", Fate::Merged, Utc::now())
@@ -194,8 +216,41 @@ mod tests {
             .unwrap();
         let merged = items::get(&db, "app#7").await.unwrap();
         assert_eq!(
-            (merged.stage, merged.state_label.as_str()),
+            (merged.stage(), merged.state_label.as_str()),
             (Stage::Done, "merged")
         );
+    }
+
+    #[tokio::test]
+    async fn a_pr_quarterdeck_opened_reports_ci_that_failed_before_the_first_sync() {
+        let db = Db::in_memory().await;
+        let failing = Pr {
+            ci: Some("FAILURE".to_owned()),
+            ..pr(0)
+        };
+        let fresh = Pr {
+            number: 8,
+            ..failing.clone()
+        };
+        let quiet = sync(&db, &fresh).await;
+        assert_eq!(quiet.unwrap(), []);
+        let input = ItemInput {
+            id: "app#3".to_owned(),
+            title: "Login breaks".to_owned(),
+            state_label: "PR #7 open".to_owned(),
+            stage: Stage::InReview,
+            status: None,
+            area: "work".to_owned(),
+            link: None,
+        };
+        work::save(&db, input, Utc::now()).await.unwrap();
+        let adopted = WorkItem {
+            source: SOURCE.to_owned(),
+            external_id: Some("me/app#7".to_owned()),
+            ..items::get(&db, "app#3").await.unwrap()
+        };
+        items::save(&db, &adopted).await.unwrap();
+        let events = sync(&db, &failing).await;
+        assert_eq!(events.unwrap(), [EventKind::CiFailed]);
     }
 }

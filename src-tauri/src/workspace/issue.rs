@@ -26,19 +26,19 @@ struct Issue {
 }
 
 /// The issue's title, description and comments, as plain text.
-pub async fn text(ws: &Workspace) -> AppResult<String> {
-    let number = ws.number.to_string();
+pub async fn text(ws: &Workspace, number: u64) -> AppResult<String> {
+    let shown = number.to_string();
     let view = [
         "issue",
         "view",
-        number.as_str(),
+        shown.as_str(),
         "--repo",
         ws.repo.as_str(),
         "--json",
         "title,body,comments",
     ];
     let json = run("gh", &ws.project, &view).await?;
-    Ok(render(ws.number, &serde_json::from_str(&json)?))
+    Ok(render(number, &serde_json::from_str(&json)?))
 }
 
 fn render(number: u64, issue: &Issue) -> String {

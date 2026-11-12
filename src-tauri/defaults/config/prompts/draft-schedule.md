@@ -5,16 +5,17 @@ Reply with ONLY a JSON object, no other text, with these keys:
 
 - "name": a short name, 1 to 4 words.
 - "area": the id of the area it belongs to, from the list above.
-- "cron": a five-field cron expression (minute hour day month weekday), or null if the request
-  is about reacting to an event.
-- "event": null, or one of "ci_failed", "pr_new_comments" when the request is about reacting
-  to CI failing or to new review comments. Prefer an event over polling whenever one fits:
-  events cost nothing until they happen.
+- "triggers": a list of when it runs; any one starts it. Each is either
+  {"type": "cron", "expr": "30 8 * * 1-5"} (minute hour day month weekday), or
+  {"type": "event", "on": "<event>", "when": {"<field>": "<value>"}, "cooldown": <minutes>}
+  to react to something happening. "when" (optional) keeps only events whose fields match, and
+  "*" in a value is a wildcard; every event also has "area" and "subject" (the item or schedule
+  it's about). "cooldown" (optional) is the minutes to wait before running again on the same
+  subject. Prefer an event over polling whenever one fits: events cost nothing until they
+  happen. The events:
+{{events}}
 - "prompt": the instructions Claude should follow each time, written to Claude, 1 to 4
-  sentences.
-- "scope": one of "each_pr", "each_item", "one", "nothing".
-- "autonomy": "ask" if the request says to check with the user or the job could make risky
-  changes, otherwise "act".
+  sentences. Say whether to check with the user before changing anything risky.
 
 The request:
 

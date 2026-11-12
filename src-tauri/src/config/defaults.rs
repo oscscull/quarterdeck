@@ -15,7 +15,7 @@ macro_rules! default_file {
     };
 }
 
-const FILES: [(&str, &str); 16] = [
+const FILES: [(&str, &str); 19] = [
     default_file!("README.md"),
     default_file!("quarterdeck.toml"),
     default_file!("prompts/chat.md"),
@@ -25,11 +25,14 @@ const FILES: [(&str, &str); 16] = [
     default_file!("prompts/continue.md"),
     default_file!("prompts/hand-over.md"),
     default_file!("prompts/fix-ci.md"),
+    default_file!("prompts/fix-conflicts.md"),
+    default_file!("prompts/address-review.md"),
     default_file!("prompts/ci-done.md"),
     default_file!("prompts/answer.md"),
     default_file!("prompts/message.md"),
     default_file!("prompts/workspace.md"),
     default_file!("prompts/issue-workspace.md"),
+    default_file!("prompts/new-workspace.md"),
     default_file!("prompts/no-workspace.md"),
     default_file!("prompts/queue.md"),
 ];

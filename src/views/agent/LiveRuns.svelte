@@ -69,7 +69,7 @@
 
 <section aria-label={t("agent.live")}>
   <h1 class="page-title">
-    {count > 0 ? t("agent.working", { n: count }) : t("agent.idle")}
+    {count === 0 ? t("agent.idle") : count === 1 ? t("agent.workingOne") : t("agent.working", { n: count })}
   </h1>
   <p class="hint intro">{t("agent.live")}</p>
   <ul>

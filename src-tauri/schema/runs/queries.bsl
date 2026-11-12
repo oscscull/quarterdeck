@@ -35,3 +35,6 @@ query item_runs(target: text, limit: int) -> RunRow[] {
   list Run where (target = $target and finished_at != null)
     order (finished_at desc, id desc) limit ($limit, max 10);
 }
+# What a run was asked, to ask it again.
+query run_retry(id) -> RunRetryRow;
+mutation set_run_prompt(id, prompt: text) -> ok { update Run where (id = $id) { prompt = $prompt }; }

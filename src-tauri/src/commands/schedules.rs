@@ -4,8 +4,10 @@ use tauri::{AppHandle, Manager as _, State};
 use crate::app::App;
 use crate::config::{pause, schedules};
 use crate::cron::explain::{Explanation, explain};
+use crate::domain::fired::{KINDS, Kind};
 use crate::domain::schedule::Schedule;
 use crate::error::{AppError, AppResult};
+use crate::jobs::approval;
 use crate::peers;
 use crate::scheduler;
 use crate::store::runs;
@@ -19,16 +21,25 @@ pub fn set_schedule_enabled(app: State<'_, App>, id: String, enabled: bool) -> A
     schedules::save(&app.config, &schedule)
 }
 
-/// Deletes a schedule file and its run history.
+/// Deletes a schedule file, its run history and any approval of its script.
 #[tauri::command]
 pub async fn delete_schedule(app: State<'_, App>, id: String) -> AppResult<()> {
     schedules::delete(&app.config, &id)?;
+    approval::forget(&app.db, &id).await?;
     runs::delete_for(&app.db, &id).await
 }
 
-/// Writes a schedule file. An empty id creates a new one.
+/// Approves a script schedule as its file stands now. Only the app's window and peers offer this.
+#[tauri::command]
+pub async fn approve_script(app: State<'_, App>, id: String) -> AppResult<()> {
+    approval::approve(&app.db, &schedules::find(&app.config, &id)?).await
+}
+
+/// Writes a schedule file. An empty id creates a new one. The user wrote it here, so a script is
+/// approved as saved.
 #[tauri::command]
 pub async fn save_schedule(app: State<'_, App>, mut schedule: Schedule) -> AppResult<String> {
+    schedules::check(&schedule)?;
     if schedule.id.is_empty() {
         if let Some(id) =
             peers::handoff::create_elsewhere_async(app.settings()?, schedule.clone()).await?
@@ -38,7 +49,14 @@ pub async fn save_schedule(app: State<'_, App>, mut schedule: Schedule) -> AppRe
         schedule.id = schedules::free_id(&app.config, &schedules::slug(&schedule.name));
     }
     schedules::save(&app.config, &schedule)?;
+    approval::approve(&app.db, &schedule).await?;
     Ok(schedule.id)
+}
+
+/// Events a trigger can wait for, for the trigger editor.
+#[tauri::command]
+pub fn event_kinds() -> Vec<Kind> {
+    KINDS.to_vec()
 }
 
 /// Live explanation while the user edits a cron expression.

@@ -4,25 +4,43 @@ use serde::Deserialize;
 
 use super::super::ctx::Ctx;
 use super::super::tool::{Tool, async_tool};
-use super::in_area;
+use super::{in_area, time};
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, Stage, Status, WorkItem};
+use crate::domain::trigger::OnEvent;
+use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::store::{asks, events, items};
+use crate::turns::Clock;
 use crate::work;
 
-const LIST_ITEMS: &str =
-    "Work items (tickets, PRs, personal projects) in priority order, highest first.";
+const LIST_ITEMS: &str = "Work items (tickets, PRs, issues, personal projects) in priority order, highest \
+             first. `parked` lists only parked work (on a later turn).";
 const GET_ITEM: &str = "One item with its open asks and its history.";
 const CREATE_ITEM: &str = "Adds a work item to the bottom of the priorities. Use the ticket key as `key` when there \
-             is one (e.g. JD-104). It starts as the user's turn; hand it on with pass_turn. Returns \
-             the item's id.";
+             is one (e.g. JD-104). Every new item is the user's turn, on Today: up next (the \
+             default) asks them to start it, park it or close it. If it can start now, start it: \
+             take it on with claim_item or pass_turn to agent. If it can't start yet (it needs \
+             something that doesn't exist yet, or must wait for a date), park_item it saying why. \
+             Never leave work that can start sitting, and never park work only because it isn't \
+             due yet. Returns the item's id.";
 const UPDATE_ITEM: &str = "Changes an item. Only the fields you pass change. Keep `state_label` short and current, \
              e.g. \"waiting on review from Sam\". Set `status` to what it's waiting on, or \
              `clear_status` when it's moving again. Whose turn it is changes only through \
-             pass_turn.";
+             pass_turn, and moving it between stages keeps its turn.";
 const DELETE_ITEM: &str = "Deletes an item with its asks and history.";
 const MOVE_ITEM: &str = "Moves an item to a position in the priorities, 1 being the top.";
+const PARK_ITEM: &str = "Parks work, started or not, that can't start or go on yet. Never for work \
+             that merely isn't due: work that can start, starts. `why` is required: what stops it \
+             now and what to do once it can. Either until a date (`until`, RFC 3339; e.g. \
+             \"restarts 1 Dec\", \"14 days for traffic to reach 0\"), when it comes back as the \
+             user's turn, or the agent's with `then: agent`; or, with no `until`, until something \
+             happens: `wake` events bring it back at once (triggers as in schedules, e.g. \
+             {\"on\": \"item.stage\", \"when\": {\"item\": \"app#9\", \"stage\": \"done\"}}), \
+             and the agent checks `why` at least daily regardless, starting it or parking it \
+             again. It leaves Today for the Parked list (with a countdown) meanwhile. Nothing parks \
+             for good: close work nobody will pick up (update_item stage done). `parked: false` \
+             brings it back now.";
 const ADD_NOTE: &str = "Adds a line to an item's history, e.g. \"opened PR #821\". Use for progress worth \
              remembering; the user sees it in the item's history.";
 
@@ -34,6 +52,7 @@ pub fn tools() -> Vec<Tool> {
         async_tool("update_item", UPDATE_ITEM, update),
         async_tool("delete_item", DELETE_ITEM, delete),
         async_tool("move_item", MOVE_ITEM, move_to),
+        async_tool("park_item", PARK_ITEM, park),
         async_tool("add_note", ADD_NOTE, note),
     ]
 }
@@ -47,14 +66,21 @@ struct ListArgs {
     /// Include done items. Defaults to false.
     #[serde(default)]
     include_done: bool,
+    /// List the parked items instead. Defaults to false.
+    #[serde(default)]
+    parked: bool,
 }
 
 async fn list(ctx: Ctx, args: ListArgs) -> AppResult<Vec<WorkItem>> {
-    let mut all = items::list(&ctx.db).await?;
+    let mut all = if args.parked {
+        crate::park::list(&ctx.db).await?
+    } else {
+        items::list(&ctx.db).await?
+    };
     all.retain(|i| {
         in_area(args.area.as_ref(), &i.area)
-            && args.stage.is_none_or(|s| s == i.stage)
-            && (args.include_done || i.stage != Stage::Done)
+            && args.stage.is_none_or(|s| s == i.stage())
+            && (args.include_done || i.stage() != Stage::Done)
     });
     Ok(all)
 }
@@ -118,7 +144,9 @@ struct UpdateArgs {
 async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<String> {
     let area = args.area.as_deref().map(|a| ctx.area(a)).transpose()?;
     let old = items::get(&ctx.db, &args.id).await?;
+    let stage = args.stage.unwrap_or_else(|| old.stage());
     let input = ItemInput {
+        stage,
         status: if args.clear_status {
             None
         } else {
@@ -127,7 +155,6 @@ async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<String> {
         id: old.id,
         title: args.title.unwrap_or(old.title),
         state_label: args.state_label.unwrap_or(old.state_label),
-        stage: args.stage.unwrap_or(old.stage),
         area: area.unwrap_or(old.area),
         link: args.link.or(old.link),
     };
@@ -158,6 +185,44 @@ async fn move_to(ctx: Ctx, args: MoveArgs) -> AppResult<()> {
         args.id.clone(),
     );
     items::reorder(&ctx.db, &ids).await
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ParkArgs {
+    id: String,
+    /// False brings it back now. Defaults to true.
+    #[serde(default = "yes")]
+    parked: bool,
+    /// When it comes back, as RFC 3339.
+    until: Option<String>,
+    /// Events that bring it back sooner.
+    #[serde(default)]
+    wake: Vec<OnEvent>,
+    /// Required: what stops it now and what to do once it can. Noted in its history and repeated
+    /// when it wakes.
+    why: Option<String>,
+    /// Who picks it up when it's back on its date: `you` (the default) or `agent`. Without a date
+    /// the agent checks it.
+    then: Option<Turn>,
+}
+
+const fn yes() -> bool {
+    true
+}
+
+async fn park(ctx: Ctx, args: ParkArgs) -> AppResult<()> {
+    let limits = ctx.settings()?.turns;
+    let clock = Clock::now(&limits);
+    if !args.parked {
+        return crate::park::unpark(&ctx.db, &args.id, clock).await;
+    }
+    let parking = crate::park::Parking {
+        until: args.until.as_deref().map(time).transpose()?,
+        wake: args.wake,
+        why: args.why,
+        then: args.then,
+    };
+    crate::park::park(&ctx.db, &args.id, parking, clock).await
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

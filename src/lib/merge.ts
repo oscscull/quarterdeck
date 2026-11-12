@@ -19,6 +19,7 @@ export function mergeToday(local: TodayView, remote: Remote<TodayView>[]): Today
     ) as TodayView["upcoming"],
     priorities: [...local.priorities, ...remote.flatMap((r) => tag(r.value.priorities, r.node))],
     todos: [...local.todos, ...remote.flatMap((r) => tag(r.value.todos, r.node))],
+    triage: [...(local.triage ?? []), ...remote.flatMap((r) => tag(r.value.triage ?? [], r.node))],
     urgent: [...local.urgent, ...remote.flatMap((r) => tag(r.value.urgent, r.node))],
     activity: [...local.activity, ...remote.flatMap((r) => tag(r.value.activity, r.node))].sort(
       byTime((a) => a.at, true),
@@ -37,7 +38,10 @@ export function mergeAgent(local: AgentView, remote: Remote<AgentView>[]): Agent
     ...local,
     schedules,
     live: [...local.live, ...remote.flatMap((r) => r.value.live)],
-    // An older peer sends no turns.
+    // An older peer sends no turns or events.
     turns: [...local.turns, ...remote.flatMap((r) => tag(r.value.turns ?? [], r.node))],
+    events: [...(local.events ?? []), ...remote.flatMap((r) => tag(r.value.events ?? [], r.node))].sort(
+      byTime((e) => e.at, true),
+    ),
   };
 }

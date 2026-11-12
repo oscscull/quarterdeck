@@ -1,81 +1,34 @@
-//! Runs one schedule through headless Claude and records the outcome.
+//! Runs one schedule through headless Claude.
 
-use chrono::Utc;
 use tauri::{AppHandle, Manager as _};
 
+use super::reach;
 use crate::app::App;
 use crate::config::prompts::{Prompt, render};
-use crate::domain::activity::Activity;
-use crate::domain::run::{Outcome, Run};
+use crate::domain::fired::Fired;
+use crate::domain::run::Outcome;
 use crate::domain::schedule::Schedule;
-use crate::domain::urgent::Urgent;
+use crate::domain::script::Report;
 use crate::error::AppResult;
-use crate::notify;
-use crate::store::{activity, runs, urgent};
+use crate::jobs::{self, Begun, Ended};
+use crate::scheduler::outage;
 
-const SUMMARY_CHARS: usize = 200;
-
-/// Claude's first line, kept short: run history is for glancing, not reading.
-fn summary_of(reply: &str) -> String {
-    reply
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or_default()
-        .chars()
-        .take(SUMMARY_CHARS)
-        .collect()
+/// Why it's running, as the prompt says it: the event's line and its fields.
+fn why(cause: Option<&Fired>) -> AppResult<String> {
+    let Some(event) = cause else {
+        return Ok("its schedule came due, or someone asked to run it now".to_owned());
+    };
+    let fields = serde_json::to_string(&event.data)?;
+    Ok(format!(
+        "{} (event {}, fields {fields})",
+        event.about, event.kind
+    ))
 }
 
-fn started(schedule: &Schedule, node: &str) -> Run {
-    Run {
-        id: 0,
-        schedule_id: Some(schedule.id.clone()),
-        what: schedule.name.clone(),
-        target: String::new(),
-        node: node.to_owned(),
-        started_at: Utc::now(),
-        finished_at: None,
-        outcome: None,
-        summary: None,
-    }
-}
-
-fn failure(schedule: &Schedule, detail: String) -> Urgent {
-    Urgent {
-        id: 0,
-        title: format!("{} failed", schedule.name),
-        detail,
-        area: schedule.area.clone(),
-        raised_at: Utc::now(),
-        schedule_id: Some(schedule.id.clone()),
-    }
-}
-
-fn note(schedule: &Schedule, summary: &str) -> Activity {
-    Activity {
-        id: 0,
-        text: format!("{}: {summary}", schedule.name),
-        area: schedule.area.clone(),
-        at: Utc::now(),
-        unread: true,
-    }
-}
-
-/// Where `ask` runs: on `node`, logging its steps under run `id`.
-struct Place<'a> {
-    node: &'a str,
-    id: i64,
-}
-
-async fn ask(
-    app: &App,
-    schedule: &Schedule,
-    place: &Place<'_>,
-    trigger: &str,
-) -> AppResult<String> {
+async fn ask(app: &App, schedule: &Schedule, begun: &Begun, trigger: &str) -> AppResult<String> {
     let settings = app.settings()?;
     let vars = [
-        ("node", place.node),
+        ("node", begun.node.as_str()),
         ("name", schedule.name.as_str()),
         ("instructions", schedule.prompt.as_str()),
         ("trigger", trigger),
@@ -86,49 +39,35 @@ async fn ask(
         session: super::Session::Fresh,
         cwd: None,
         permission_mode: None,
-        run: Some(place.id),
+        run: Some(begun.id),
+        depth: begun.depth,
     };
-    super::ask_with(settings.claude()?, &prompt, &opts).await
+    super::ask_with(&settings.claude()?, &prompt, &opts).await
 }
 
-/// Runs `schedule` now. Success lands in "From Claude"; failure is raised as urgent.
-/// Both send a quiet notification.
-/// `trigger` says why it ran, e.g. which PR got new comments.
-pub async fn run(handle: &AppHandle, schedule: &Schedule, trigger: Option<&str>) -> AppResult<()> {
+/// Runs `schedule` now and records how it went. `cause` is the event that started it, if one
+/// did, e.g. new comments on a PR; what the run does counts as one event further down its chain.
+pub async fn run(handle: &AppHandle, schedule: &Schedule, cause: Option<&Fired>) -> AppResult<()> {
     let app = handle.state::<App>();
-    let node = app.settings()?.node_for(&schedule.area).to_owned();
-    let id = runs::start(&app.db, &started(schedule, &node)).await?;
-    let why = trigger.unwrap_or("its schedule came due, or someone asked to run it now");
-    let (outcome, summary) = match ask(&app, schedule, &Place { node: &node, id }, why).await {
-        Ok(text) => (Outcome::Ok, summary_of(&text)),
-        Err(e) => (Outcome::Failed, summary_of(&e.to_string())),
+    let begun = jobs::begin(&app, schedule, cause).await?;
+    let (outcome, summary) = match ask(&app, schedule, &begun, &why(cause)?).await {
+        Ok(text) => (Outcome::Ok, jobs::summary_of(&text)),
+        Err(e) => (Outcome::Failed, jobs::summary_of(&e.to_string())),
     };
-    runs::finish(&app.db, id, outcome, &summary).await?;
-    match outcome {
-        Outcome::Ok => activity::insert(&app.db, &note(schedule, &summary)).await?,
-        Outcome::Failed | Outcome::Missed => {
-            urgent::raise(&app.db, &failure(schedule, summary.clone())).await?;
-        }
+    // A run that never reached the agent is the outage's to report, once for all of them.
+    let unreached = outcome == Outcome::Failed && reach::unreached(&summary);
+    if unreached {
+        outage::report(handle, &app.settings()?, &summary).await?;
     }
-    let title = match outcome {
-        Outcome::Ok => schedule.name.clone(),
-        Outcome::Failed | Outcome::Missed => format!("{} failed", schedule.name),
+    let report = if unreached {
+        Report::Never
+    } else {
+        Report::Always
     };
-    // Notifications are a courtesy; the outcome is already recorded.
-    drop(notify::send(handle, &title, &summary));
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn summary_is_the_first_real_line() {
-        assert_eq!(
-            summary_of("\n  \nDid the thing.\nMore detail."),
-            "Did the thing."
-        );
-        assert_eq!(summary_of(&"x".repeat(500)).len(), SUMMARY_CHARS);
-    }
+    let ended = Ended {
+        outcome,
+        summary,
+        report,
+    };
+    jobs::settle(handle, schedule, &begun, &ended).await
 }

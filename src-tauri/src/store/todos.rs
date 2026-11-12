@@ -13,6 +13,7 @@ fn from_row(row: TodoRow) -> AppResult<Todo> {
         title: row.title,
         area: row.area,
         due: row.due.as_deref().map(time::get_date).transpose()?,
+        link: row.link,
         done_at: time::get_opt(row.done_at.as_deref())?,
     })
 }
@@ -29,6 +30,7 @@ pub async fn insert(db: &Db, todo: &Todo) -> AppResult<()> {
         title: todo.title.clone(),
         area: todo.area.clone(),
         due: todo.due.map(time::put_date),
+        link: todo.link.clone(),
         done_at: time::put_opt(todo.done_at),
     };
     Ok(db.api().add_todo(input, ()).await?)
@@ -54,6 +56,7 @@ pub async fn update(db: &Db, todo: &Todo) -> AppResult<()> {
         title: todo.title.clone(),
         area: todo.area.clone(),
         due: todo.due.map(time::put_date),
+        link: todo.link.clone(),
         done_at: time::put_opt(todo.done_at),
     };
     Ok(db.api().update_todo(input, ()).await?)

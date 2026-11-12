@@ -2,7 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::fetch::{Pr, Reviewers};
+use super::fetch::{Base, Pr, Reviewers};
+use crate::config::github::GithubSettings;
 use crate::domain::item::{Stage, Status};
 use crate::domain::schedule::EventKind;
 
@@ -24,6 +25,9 @@ pub struct Snapshot {
     #[serde(default)]
     pub ci_passed: bool,
     pub comments: u64,
+    /// Behind or conflicting with the branch it merges into.
+    #[serde(default)]
+    pub base: Base,
     /// Informational check results, noted on the item when they change.
     #[serde(default)]
     pub notes: Vec<String>,
@@ -33,9 +37,10 @@ fn failing(pr: &Pr) -> bool {
     matches!(pr.ci.as_deref(), Some("FAILURE" | "ERROR"))
 }
 
-/// Not failing, not a draft, and not yet reviewed either way.
+/// Not failing, not conflicting, not a draft, and not yet reviewed either way.
 fn waiting_on_review(pr: &Pr) -> bool {
     !failing(pr)
+        && pr.base != Base::Conflicts
         && !pr.draft
         && !matches!(pr.review.as_deref(), Some("CHANGES_REQUESTED" | "APPROVED"))
 }
@@ -45,6 +50,9 @@ fn state(pr: &Pr) -> (Option<Status>, &'static str, &'static str) {
     if failing(pr) {
         return (Some(Status::CiFailed), "CI failing, needs a fix", "Claude");
     }
+    if pr.base == Base::Conflicts {
+        return (None, "conflicts with base, needs a fix", "Claude");
+    }
     if matches!(pr.ci.as_deref(), Some("PENDING" | "EXPECTED")) {
         return (Some(Status::Ci), "CI running", "CI");
     }
@@ -52,9 +60,21 @@ fn state(pr: &Pr) -> (Option<Status>, &'static str, &'static str) {
         return (None, "draft", "you");
     }
     match pr.review.as_deref() {
-        Some("CHANGES_REQUESTED") => (None, "changes requested", "you"),
+        Some("CHANGES_REQUESTED") => (None, "changes requested, needs addressing", "Claude"),
         Some("APPROVED") => (Some(Status::Approved), "approved, ready to merge", "you"),
         _ => (Some(Status::Review), "waiting on review", "reviewers"),
+    }
+}
+
+/// Whether Claude takes on what the PR waits on by itself, where the PR waits on Claude: a fix
+/// for failing CI, then conflicts, then requested changes, the order `state` reads them in.
+pub const fn claude_fixes(s: &Snapshot, github: &GithubSettings) -> bool {
+    if s.ci_failing {
+        github.fixes.ci
+    } else if matches!(s.base, Base::Conflicts) {
+        github.branches.fix_conflicts
+    } else {
+        github.fixes.reviews
     }
 }
 
@@ -69,10 +89,8 @@ fn holder_name(pr: &Pr, holder: &str) -> String {
 
 pub fn of(pr: &Pr) -> Snapshot {
     let (status, label, holder) = match (waiting_on_review(pr), pr.reviewers) {
-        (true, Reviewers::Yourself) => (Some(Status::Decision), "ready for your review", "you"),
-        (true, Reviewers::NoneRequested) => {
-            (Some(Status::Decision), "no reviewer requested yet", "you")
-        }
+        (true, Reviewers::Yourself) => (None, "ready for your review", "you"),
+        (true, Reviewers::NoneRequested) => (None, "no reviewer requested yet", "you"),
         (true | false, _) => state(pr),
     };
     let holder = holder_name(pr, holder);
@@ -91,6 +109,7 @@ pub fn of(pr: &Pr) -> Snapshot {
         ci_failing: failing(pr),
         ci_passed: pr.ci.as_deref() == Some("SUCCESS"),
         comments: pr.comments,
+        base: pr.base,
         notes: pr.notes.clone(),
     }
 }
@@ -108,6 +127,32 @@ pub fn events(old: Option<&Snapshot>, new: &Snapshot) -> Vec<EventKind> {
     if new.ci_passed && !old.ci_passed {
         events.push(EventKind::CiPassed);
     }
+    if new.base != old.base {
+        events.extend(base_event(new.base));
+    }
+    events
+}
+
+/// The event for a branch that fell behind or into conflict.
+const fn base_event(base: Base) -> Option<EventKind> {
+    match base {
+        Base::Current => None,
+        Base::Behind => Some(EventKind::PrBehind),
+        Base::Conflicts => Some(EventKind::PrConflicts),
+    }
+}
+
+/// Events the first time a PR is seen on an item Quarterdeck already had (one it opened): CI may
+/// have finished before the first sync, and whoever is on the item still needs to hear.
+pub fn adopted(new: &Snapshot) -> Vec<EventKind> {
+    let mut events = Vec::new();
+    if new.ci_failing {
+        events.push(EventKind::CiFailed);
+    }
+    if new.ci_passed {
+        events.push(EventKind::CiPassed);
+    }
+    events.extend(base_event(new.base));
     events
 }
 
@@ -127,6 +172,8 @@ mod tests {
             comments,
             reviewers: Reviewers::Requested,
             reviewer_names: Vec::new(),
+            closes: Vec::new(),
+            base: Base::Current,
             checks: Vec::new(),
             notes: Vec::new(),
         }
@@ -150,7 +197,7 @@ mod tests {
             ..pr(Some("SUCCESS"), None, 0)
         };
         assert_eq!(of(&unrequested).owned.label, "no reviewer requested yet");
-        assert_eq!(of(&unrequested).owned.status, Some(Status::Decision));
+        assert_eq!(of(&unrequested).owned.holder, "you");
         let failing = Pr {
             reviewers: Reviewers::Yourself,
             ..pr(Some("FAILURE"), None, 0)
@@ -169,6 +216,42 @@ mod tests {
     }
 
     #[test]
+    fn requested_changes_go_to_claude_unless_switched_off() {
+        let asked = of(&pr(Some("SUCCESS"), Some("CHANGES_REQUESTED"), 1));
+        assert_eq!(asked.owned.holder, "Claude");
+        let mut github = GithubSettings::default();
+        assert!(claude_fixes(&asked, &github));
+        github.fixes.reviews = false;
+        assert!(!claude_fixes(&asked, &github));
+        let failing = of(&pr(Some("FAILURE"), Some("CHANGES_REQUESTED"), 1));
+        assert!(claude_fixes(&failing, &github));
+    }
+
+    #[test]
+    fn conflicts_go_to_claude_and_fire_once() {
+        let clean = of(&pr(Some("SUCCESS"), None, 0));
+        let conflicting = of(&Pr {
+            base: Base::Conflicts,
+            ..pr(Some("SUCCESS"), None, 0)
+        });
+        assert_eq!(conflicting.owned.holder, "Claude");
+        assert_eq!(events(Some(&clean), &conflicting), [EventKind::PrConflicts]);
+        assert_eq!(events(Some(&conflicting), &conflicting), []);
+    }
+
+    #[test]
+    fn falling_behind_fires_but_keeps_waiting_on_review() {
+        let current = of(&pr(Some("SUCCESS"), None, 0));
+        let behind = of(&Pr {
+            base: Base::Behind,
+            ..pr(Some("SUCCESS"), None, 0)
+        });
+        assert_eq!(behind.owned, current.owned);
+        assert_eq!(events(Some(&current), &behind), [EventKind::PrBehind]);
+        assert_eq!(events(Some(&behind), &current), []);
+    }
+
+    #[test]
     fn events_fire_on_change_only() {
         let before = of(&pr(Some("SUCCESS"), None, 2));
         let after = of(&pr(Some("FAILURE"), None, 3));
@@ -180,5 +263,16 @@ mod tests {
             events(Some(&before), &after),
             [EventKind::PrNewComments, EventKind::CiFailed]
         );
+    }
+
+    #[test]
+    fn an_adopted_pr_reports_ci_that_finished_before_the_first_sync() {
+        let failed = of(&pr(Some("FAILURE"), None, 3));
+        assert_eq!(adopted(&failed), [EventKind::CiFailed]);
+        assert_eq!(
+            adopted(&of(&pr(Some("SUCCESS"), None, 3))),
+            [EventKind::CiPassed]
+        );
+        assert_eq!(adopted(&of(&pr(Some("PENDING"), None, 3))), []);
     }
 }

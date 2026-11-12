@@ -10,6 +10,10 @@ launch_at_login = true
 # How many asks Today's Priorities section shows, taken from the top of the ranking.
 priority_limit = 3
 
+# How many earlier messages in the "Ask Claude" chat go to Claude with each new one. The chat
+# itself lasts until the app restarts.
+chat_history_messages = 20
+
 
 # How Claude may act in a project's worktree: "auto" lets Claude judge what's safe, as in your own
 # sessions; "acceptEdits" allows edits but only the commands the project's allow rules list.
@@ -18,9 +22,21 @@ project_permission_mode = "auto"
 # Command used to run Claude headlessly (`<command> -p "<prompt>"`).
 claude_command = "claude"
 
+# The model every Claude run is locked to, subagents included, e.g. "claude-opus-5-5" (stays put
+# when new models come out) or "opus" (follows the latest). Empty uses whatever Claude Code picks.
+# Agents can't change this; edit it here.
+claude_model = ""
+
+# The account Claude Code's login is saved under; every run gets it as USER and LOGNAME. Empty
+# uses this Mac's account name (what `id -un` prints), never the USER Quarterdeck inherited.
+# Agents can't change this; edit it here.
+claude_user = ""
+
 # How long stored agent output lives before it is deleted.
 activity_ttl_days = 7
 run_ttl_days = 14
+# Events (what happened, and which schedules it started).
+event_ttl_days = 3
 done_todo_ttl_days = 1
 # Done work items, with their history, are deleted this long after they finish.
 done_item_ttl_days = 30
@@ -45,11 +61,13 @@ name = "Life"
 color = "#2e8a47"
 node = "home-mac"
 
-# Your open PRs become items, through the `gh` command's existing login. Quarterdeck only rewrites a
+# Your open PRs (and, if you watch them, issues) become items, through the `gh` command's existing login. Quarterdeck only rewrites a
 # PR's title, stage and status when they change on GitHub, so your edits stick in between.
 [github]
 enabled = true
 poll_minutes = 5
+# Syncs failing this long (e.g. `gh` logged out) are raised as urgent until one works.
+failing_minutes = 60
 # Coming back to Quarterdeck's window syncs at once (e.g. right after you merge a PR in the browser),
 # unless a sync ran within this many seconds.
 focus_sync_seconds = 30
@@ -62,7 +80,19 @@ self_review = []
 # claimed, Quarterdeck tells that Claude session, so agents never poll CI. When CI fails on a PR nobody
 # is on, and no ci_failed schedule covers it, Quarterdeck hands it to Claude (prompts/fix-ci.md).
 fix_ci = true
-fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)", "Bash(gh run rerun:*)"]
+# Review comments on a PR go to the Claude session on it, or, if nobody is on it and no
+# pr_new_comments schedule covers them, to a new one (prompts/address-review.md). Claude makes the
+# clear changes, replies with the commit, and asks you only about judgement calls. Requested changes
+# are Claude's turn, not yours, while this is on.
+fix_reviews = true
+# Tools those runs may use without asking (CI fixes and review comments).
+fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)", "Bash(gh run rerun:*)", "Bash(gh pr comment:*)"]
+# Where a repo only merges branches that are up to date, a PR that falls behind (say, while it waits
+# on review) has its branch updated by Quarterdeck (`gh pr update-branch`, no Claude). A PR that
+# starts conflicting goes to the Claude session on it, or, if nobody is on it, to a new one
+# (prompts/fix-conflicts.md). A pr_behind or pr_conflicts schedule takes over from either.
+update_behind = true
+fix_conflicts = true
 
 # Where repos are checked out on this machine. Work Quarterdeck starts on their PRs (fixing CI, acting
 # on your answers), or on items linking their issues, runs there, in a worktree per item, with the
@@ -79,6 +109,13 @@ fix_ci_tools = ["Bash(gh pr checks:*)", "Bash(gh pr view:*)", "Bash(gh run view:
 # Quarterdeck pushes it and opens the PR when Claude finishes.
 [queue]
 items = []
+
+# Open issues of these owners ("me") or repos ("my-org/app") become items to triage, filed like their
+# PRs ([github.areas]). Issues one of your open PRs closes are left to that PR's item. Delete an
+# issue's item to drop it from view; syncs keep it hidden.
+[github.issues]
+watch = []
+skip_labels = []
 
 # Checks that only inform (e.g. a visual-diff report). Their failures don't count as CI failing;
 # they're noted on the item instead.
@@ -129,24 +166,45 @@ port = 4791
 lan = false
 # Peers must send this. Made on first start when empty.
 token = ""
+# A peer that can't be reached for this long is raised as urgent until it's back, since its items
+# can't be seen from here. Peers tell each other where they are, so one whose address changed is
+# found again once it can reach this machine.
+down_minutes = 30
 
 # [[sync.peers]]
 # name = "home-mac"
 # url = "http://Home-Mac.local:4791"     # `scutil --get LocalHostName` on that Mac, plus .local
 # token = "the token from home-mac's quarterdeck.toml"
 
-# Every item in flight has a turn: yours, the agent's, others' (reviewers, CI) or later. Each has a
-# clock, so nothing sits forever. The agent's turn ends when it hands it on, or after agent_hours
-# (back to you). Your turn reminds you every you_remind_hours. Others' turn comes back after
-# others_hours, to others_then ("you" or "agent") unless the item says otherwise. An agent session
-# working outside Quarterdeck that goes quiet for quiet_minutes is prompted to carry on.
+# Every open item, started or not, has a turn: yours, the agent's, others' (reviewers, CI) or later
+# (parked). Each has a clock, so nothing sits forever. The agent's turn ends when it hands it on, or
+# after agent_hours (back to you). Your turn reminds you every you_remind_hours. Others' turn comes
+# back after others_hours, to others_then ("agent" checks whether it's still waiting, or "you")
+# unless the item says otherwise. Work parked until something happens (not until a date) goes to
+# the agent every later_hours to check. agent_hours, others_hours and later_hours are at most 24:
+# nothing waits unchecked for more than a day. An agent session
+# working outside Quarterdeck that goes quiet for quiet_minutes is prompted to carry on. A run that
+# fails is tried again by itself, in a new session, failure_retries times in a row before it's yours.
 [turns]
 agent_hours = 4
 you_remind_hours = 24
 others_hours = 24
-later_hours = 72
-others_then = "you"
+later_hours = 24
+others_then = "agent"
 quiet_minutes = 45
+failure_retries = 2
+
+# When the agent can't run at all (offline, `claude` missing or logged out), its work waits instead
+# of failing: one banner on Today says so, and its items keep the agent's turn. Quarterdeck checks
+# again after first_retry_seconds, doubling the wait each time up to max_retry_seconds; coming back
+# to the window checks at once. `probe` is a host:port the agent needs ("" skips it), and
+# `github_probe` one that worktrees and pushes need ("" skips it).
+[outage]
+first_retry_seconds = 60
+max_retry_seconds = 900
+probe = "api.anthropic.com:443"
+github_probe = "github.com:443"
+probe_timeout_seconds = 5
 
 # Every merge to main publishes a release; Quarterdeck installs it by itself, so every machine runs
 # the same build. It waits until no Claude run is live and you're not in the window, then restarts.
@@ -160,3 +218,5 @@ check_minutes = 30
 # Let this dev build run Claude. Off, every run fails at once, so a copy of real data can't resume
 # real sessions or push to real PRs.
 run_claude = false
+# Let this dev build run script schedules. Off for the same reason.
+run_scripts = false

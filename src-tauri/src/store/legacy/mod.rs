@@ -42,7 +42,7 @@ async fn write_items(db: &Db, old: &Old) -> AppResult<()> {
         }
     }
     for (item_id, at, change) in &old.events {
-        events::record(db, item_id, *at, change).await?;
+        events::restore(db, item_id, *at, change).await?;
     }
     for (ask, answer) in &old.asks {
         let id = asks::insert(db, ask).await?;
@@ -137,10 +137,11 @@ mod tests {
     /// Every kind of record from `ROWS` is in the new database.
     async fn everything_arrived(db: &Db) {
         let item = items::get(db, "JD-1").await.unwrap();
-        assert_eq!(
-            (item.turn, item.waiting_on.as_deref(), item.rank),
-            (crate::domain::turn::Turn::Others, Some("Sam"), 0)
-        );
+        let waiting = crate::domain::life::Whose::Others {
+            waiting_on: "Sam".to_owned(),
+            then: None,
+        };
+        assert_eq!((item.life.whose(), item.rank), (Some(&waiting), 0));
         assert!(
             items::list(db)
                 .await

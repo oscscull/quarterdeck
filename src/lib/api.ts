@@ -7,6 +7,7 @@ import type {
   MacCalendar,
   ClaudeConnection,
   AgentView,
+  EventKindInfo,
   LiveRun,
   Step,
   Area,
@@ -15,10 +16,13 @@ import type {
   Explanation,
   ItemDetail,
   ItemInput,
+  Parking,
   Schedule,
+  Outage,
   TodayView,
   WorkItem,
   ReplyOutcome,
+  ChatMessage,
 } from "./types";
 
 /** Typed wrappers around the backend's Tauri commands. */
@@ -39,8 +43,8 @@ export const api = {
   alertDone: (id: number) => invoke<undefined>("alert_done", { id }),
   alertSnooze: (id: number) => invoke<undefined>("alert_snooze", { id }),
   areas: () => invoke<Area[]>("areas"),
-  addTodo: (title: string, area: string, due: string | null) =>
-    invoke<undefined>("add_todo", { title, area, due }),
+  addTodo: (title: string, area: string, due: string | null, link: string | null) =>
+    invoke<undefined>("add_todo", { todo: { title, area, due, link } }),
   setTodoDone: (id: number, done: boolean) => invoke<undefined>("set_todo_done", { id, done }),
   updateTodo: (todo: TodoEdit) => invoke<undefined>("update_todo", { todo }),
   deleteTodo: (id: number) => invoke<undefined>("delete_todo", { id }),
@@ -52,6 +56,9 @@ export const api = {
   saveItem: (item: ItemInput) => invoke<string>("save_item", { item }),
   deleteItem: (id: string) => invoke<undefined>("delete_item", { id }),
   itemDetail: (id: string) => invoke<ItemDetail>("item_detail", { id }),
+  parkItem: (id: string, park: Parking) => invoke<undefined>("park_item", { id, park }),
+  unparkItem: (id: string) => invoke<undefined>("unpark_item", { id }),
+  parkedItems: () => invoke<WorkItem[]>("parked_items"),
   respond: (response: Response) => invoke<ReplyOutcome>("respond", { response }),
   addCommitment: (commitment: CommitmentInput) => invoke<undefined>("add_commitment", { commitment }),
   hideCommitment: (id: number) => invoke<undefined>("hide_commitment", { id }),
@@ -62,14 +69,18 @@ export const api = {
   saveSchedule: (schedule: Schedule) => invoke<string>("save_schedule", { schedule }),
   deleteSchedule: (id: string) => invoke<undefined>("delete_schedule", { id }),
   explainCron: (expr: string) => invoke<Explanation>("explain_cron", { expr }),
+  eventKinds: () => invoke<EventKindInfo[]>("event_kinds"),
+  approveScript: (id: string) => invoke<undefined>("approve_script", { id }),
   runScheduleNow: (id: string) => invoke<undefined>("run_schedule_now", { id }),
   pauseAll: (until: string | null) => invoke<undefined>("pause_all", { until }),
   resumeAll: () => invoke<undefined>("resume_all"),
+  checkAgent: () => invoke<Outage | null>("check_agent"),
   dismissUrgent: (id: number) => invoke<undefined>("dismiss_urgent", { id }),
   dismissAllUrgent: () => invoke<undefined>("dismiss_all_urgent"),
+  retryUrgent: (id: number) => invoke<undefined>("retry_urgent", { id }),
   resolveUrgent: (id: number, message: string) => invoke<string>("resolve_urgent", { id, message }),
-  askClaude: (page: string, context: string, message: string) =>
-    invoke<string>("ask_claude", { page, context, message }),
+  askClaude: (page: string, context: string, history: ChatMessage[], message: string) =>
+    invoke<string>("ask_claude", { request: { page, context, history, message } }),
   draftSchedule: (request: string) => invoke<string>("draft_schedule", { request }),
 };
 

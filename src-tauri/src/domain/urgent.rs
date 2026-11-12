@@ -12,4 +12,6 @@ pub struct Urgent {
     pub raised_at: DateTime<Utc>,
     /// Set when it is about a schedule, which lets the UI offer "Run now".
     pub schedule_id: Option<String>,
+    /// Set when it is about a failed agent run, which lets the UI offer "Retry".
+    pub run_id: Option<i64>,
 }

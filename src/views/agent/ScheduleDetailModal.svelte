@@ -5,23 +5,25 @@
   import { areas, findArea } from "../../lib/areas.svelte";
   import { errorText } from "../../lib/api";
   import { route } from "../../lib/route";
-  import { t, type CopyKey } from "../../lib/copy";
+  import { t } from "../../lib/copy";
   import { dayClock } from "../../lib/time";
-  import type { Run, Schedule, Scope } from "../../lib/types";
-  import AutonomyChoice from "./AutonomyChoice.svelte";
-  import TriggerEditor from "./TriggerEditor.svelte";
+  import type { Run, Schedule } from "../../lib/types";
+  import ScriptSettings from "./ScriptSettings.svelte";
+  import TriggersEditor from "./TriggersEditor.svelte";
 
   interface Props {
     schedule: Schedule;
     runs: Run[];
+    /** Its script was made or changed outside this window and can't run until approved. */
+    needsApproval: boolean;
     now: Date;
     onClose: () => void;
     onSaved: () => void;
   }
 
-  let { schedule, runs, now, onClose, onSaved }: Props = $props();
+  let { schedule, runs, needsApproval, now, onClose, onSaved }: Props = $props();
 
-  const SCOPES: Scope[] = ["each_pr", "each_item", "one", "nothing"];
+  const NEW_SCRIPT = { timeout_minutes: 10, report: "failures" } as const;
 
   // Edit a copy; nothing changes on disk until Save.
   let form = $state<Schedule>(structuredClone(untrack(() => $state.snapshot(schedule))));
@@ -30,11 +32,23 @@
 
   const isNew = $derived(form.id === "");
   const subtitle = $derived(form.request ? t("schedule.from", { request: form.request }) : t("schedule.byHand"));
-  const scopeKey = (s: Scope): CopyKey => `scope.${s}`;
 
   async function runNow(): Promise<void> {
     try {
       await route.runSchedule(form.node, form.id);
+      onSaved();
+    } catch (e) {
+      error = errorText(e);
+    }
+  }
+
+  function setKind(script: boolean): void {
+    form.script = script ? (form.script ?? { ...NEW_SCRIPT }) : null;
+  }
+
+  async function approve(): Promise<void> {
+    try {
+      await route.approveScript(form.node, form.id);
       onSaved();
     } catch (e) {
       error = errorText(e);
@@ -61,30 +75,36 @@
     <input class="input" bind:value={form.name} />
   </label>
 
-  <label class="field">
-    {t("schedule.instructions")}
-    <textarea class="input" rows="4" bind:value={form.prompt}></textarea>
-  </label>
+  {#if needsApproval && !isNew}
+    <div class="approval" role="alert">
+      <p>{t("script.approvalNeeded")}</p>
+      <button type="button" class="button-primary" onclick={approve}>{t("script.approve")}</button>
+    </div>
+  {/if}
 
-  <TriggerEditor trigger={form.trigger} {now} onChange={(next) => (form.trigger = next)} />
-
-  <div class="pair">
-    <label class="field">
-      {t("schedule.area")}
-      <select class="input" bind:value={form.area}>
-        {#each areas.list as a (a.id)}<option value={a.id}>{a.name}</option>{/each}
-      </select>
-      {#if findArea(form.area)}<span class="hint small">{t("schedule.runsOn", { node: findArea(form.area)?.node ?? "" })}</span>{/if}
-    </label>
-    <label class="field">
-      {t("schedule.scope")}
-      <select class="input" bind:value={form.scope}>
-        {#each SCOPES as s (s)}<option value={s}>{t(scopeKey(s))}</option>{/each}
-      </select>
-    </label>
+  <div class="modes">
+    <label><input type="radio" checked={!form.script} onchange={() => setKind(false)} /> {t("script.claude")}</label>
+    <label><input type="radio" checked={Boolean(form.script)} onchange={() => setKind(true)} /> {t("script.shell")}</label>
   </div>
 
-  <AutonomyChoice value={form.autonomy} onChange={(v) => (form.autonomy = v)} />
+  <label class="field">
+    {form.script ? t("script.body") : t("schedule.instructions")}
+    <textarea class="input" class:mono={Boolean(form.script)} rows={form.script ? 6 : 4} bind:value={form.prompt} spellcheck={!form.script}></textarea>
+  </label>
+
+  {#if form.script}
+    <ScriptSettings script={form.script} onChange={(next) => (form.script = next)} />
+  {/if}
+
+  <TriggersEditor triggers={form.triggers} {now} onChange={(next) => (form.triggers = next)} />
+
+  <label class="field">
+    {t("schedule.area")}
+    <select class="input" bind:value={form.area}>
+      {#each areas.list as a (a.id)}<option value={a.id}>{a.name}</option>{/each}
+    </select>
+    {#if findArea(form.area)}<span class="hint small">{t("schedule.runsOn", { node: findArea(form.area)?.node ?? "" })}</span>{/if}
+  </label>
 
   {#if runs.length > 0}
     <div>
@@ -127,10 +147,22 @@
     font-size: 12px;
   }
 
-  .pair {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .modes {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+  }
+
+  .approval {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--urgent-bg);
+    color: var(--urgent-fg);
+    font-size: 14px;
   }
 
   .run {

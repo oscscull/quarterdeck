@@ -117,7 +117,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(item.id, "baseddsl#178");
-        assert_eq!((item.stage, item.turn), (Stage::InReview, Turn::Others));
+        assert_eq!(
+            (item.stage(), item.turn()),
+            (Stage::InReview, Some(Turn::Others))
+        );
         assert_eq!(item.link.as_deref(), Some(pr.url));
         assert!(items::find(&db, "baseddsl#190").await.unwrap().is_none());
     }

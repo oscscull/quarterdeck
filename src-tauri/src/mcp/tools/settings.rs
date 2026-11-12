@@ -20,8 +20,13 @@ call may wait while macOS asks the user to allow calendar access.";
 const CALENDAR_RULES: &str = "Sets which calendar events Quarterdeck skips for every calendar: titles containing \
 any of `ignore_titles` (case-insensitive), and optionally all-day events. To hide a single event, use \
 update_meeting with hidden instead.";
-const MAP_GITHUB: &str = "Files PRs from a GitHub owner (e.g. \"my-org\") or repo (\"me/app\") under an area. \
+const MAP_GITHUB: &str = "Files PRs and issues from a GitHub owner (e.g. \"my-org\") or repo (\"me/app\") under an area. \
 A repo entry beats its owner's.";
+const WATCH_ISSUES: &str = "Makes a GitHub owner's (e.g. \"me\") or repo's (\"my-org/app\") open issues \
+become items, or stops it (`watch: false`). Pass `area` to file them (and that owner's or repo's PRs) under \
+it. Issues come in on the normal GitHub sync with no agent; they close when GitHub closes them. Issues already \
+covered by one of the user's open PRs are left to that PR's item. To drop a single issue, close or delete \
+its item.";
 const IGNORE_GITHUB: &str = "Sets the GitHub owners or repos whose PRs Quarterdeck skips entirely.";
 const SELF_REVIEW: &str = "Sets the GitHub owners or repos where the user reviews their own PRs, so an unreviewed PR \
 shows as waiting on their decision rather than on reviewers. PRs nobody has been asked to review, or has reviewed, are \
@@ -43,13 +48,23 @@ pub fn tools() -> Vec<Tool> {
         ),
         tool("set_calendar_rules", CALENDAR_RULES, calendar_rules),
         tool("map_github_area", MAP_GITHUB, map_github),
+        tool("watch_github_issues", WATCH_ISSUES, watch_issues),
         tool("set_github_ignores", IGNORE_GITHUB, github_ignores),
         tool("set_github_self_review", SELF_REVIEW, self_review),
         tool("set_informational_checks", INFORMATIONAL, informational),
     ]
 }
 
+/// An area runs on this machine or a peer it knows: one on a machine nobody knows would have its
+/// schedules and connectors run nowhere.
 fn upsert_area(ctx: &Ctx, area: Area) -> AppResult<()> {
+    let settings = ctx.settings()?;
+    if area.node != settings.node && settings.sync.peer(&area.node).is_none() {
+        return Err(crate::error::AppError::BadInput(format!(
+            "no machine called '{}': use this one ('{}') or a peer (add_peer first)",
+            area.node, settings.node
+        )));
+    }
     edit::upsert_area(&ctx.config, &area)
 }
 
@@ -95,6 +110,28 @@ struct MapArgs {
 
 fn map_github(ctx: &Ctx, args: MapArgs) -> AppResult<()> {
     edit::map_github(&ctx.config, &args.owner_or_repo, &ctx.area(&args.area)?)
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WatchArgs {
+    /// e.g. "me" or "my-org/app"
+    owner_or_repo: String,
+    /// False stops watching. Defaults to true.
+    #[serde(default = "yes")]
+    watch: bool,
+    /// Area id to file this owner's or repo's issues and PRs under.
+    area: Option<String>,
+}
+
+const fn yes() -> bool {
+    true
+}
+
+fn watch_issues(ctx: &Ctx, args: WatchArgs) -> AppResult<()> {
+    if let Some(area) = &args.area {
+        edit::map_github(&ctx.config, &args.owner_or_repo, &ctx.area(area)?)?;
+    }
+    edit::set_issue_watch(&ctx.config, &args.owner_or_repo, args.watch)
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -1,12 +1,13 @@
 //! Runs connector syncs on their own intervals, in the background.
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use tauri::{AppHandle, Emitter as _, Manager as _};
 
 use crate::app::App;
 use crate::config::settings::Settings;
 use crate::connectors::{calendar, github, status};
 use crate::error::AppResult;
+use crate::lasting::{Card, Lasting};
 use crate::store::meta;
 
 /// The screen reloads when it hears this, so a sync's changes show without waiting.
@@ -32,16 +33,38 @@ async fn record(handle: &AppHandle, name: &str, error: Option<&str>) {
     drop(status::record(&state.db, name, error).await);
 }
 
-/// Syncs GitHub in the background, starts any event schedules it fired, and tells the screen.
-pub(super) fn spawn_github(handle: &AppHandle) {
+/// GitHub syncs that keep failing leave PRs and issues stale, so a lasting failure is urgent.
+async fn raise_if_lasting(handle: &AppHandle, error: Option<&str>, after: Duration) {
+    let db = &handle.state::<App>().db;
+    let lasting = Lasting {
+        key: "connector.github.failing".to_owned(),
+        after,
+    };
+    let Some(why) = error else {
+        drop(lasting.clear(db).await);
+        return;
+    };
+    let detail = |since: DateTime<Utc>| {
+        format!(
+            "Every GitHub sync since {} has failed, so PRs and issues aren't following GitHub: {why}",
+            since.format("%d %b %H:%M")
+        )
+    };
+    let card = Card {
+        title: "GitHub isn't syncing",
+        detail: &detail,
+        area: "",
+    };
+    drop(lasting.holds(db, &card).await);
+}
+
+/// Syncs GitHub in the background and tells the screen. Its events start schedules next tick.
+pub(super) fn spawn_github(handle: &AppHandle, failing_after: Duration) {
     let handle = handle.clone();
     tauri::async_runtime::spawn(async move {
-        let result = github::sync(&handle).await;
-        let error = result.as_ref().err().map(ToString::to_string);
+        let error = github::sync(&handle).await.err().map(|e| e.to_string());
         record(&handle, github::SOURCE, error.as_deref()).await;
-        if let Ok(fired) = result {
-            drop(super::events::start_for(&handle, &fired).await);
-        }
+        raise_if_lasting(&handle, error.as_deref(), failing_after).await;
         // The screen also reloads on its own timer, so a missed event only delays it.
         drop(handle.emit(SYNCED, ()));
     });
@@ -50,7 +73,7 @@ pub(super) fn spawn_github(handle: &AppHandle) {
 pub async fn sync_if_due(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
     let every = Duration::minutes(settings.github.poll_minutes);
     if settings.github.enabled && claim(handle, github::SOURCE, every).await? {
-        spawn_github(handle);
+        spawn_github(handle, Duration::minutes(settings.github.failing_minutes));
     }
     if !settings.calendar.feeds.is_empty()
         && claim(

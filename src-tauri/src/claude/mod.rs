@@ -1,24 +1,36 @@
 //! Runs headless Claude Code (`claude -p`) on the user's own subscription.
 
+pub mod account;
 pub mod connect;
 pub mod draft;
 mod follow;
+mod login;
+mod program;
+pub mod reach;
 pub mod runner;
+pub mod sessions;
 mod stream;
+pub mod transcript;
+
+pub use program::Program;
 
 use tokio::process::Command;
 
 use crate::cli;
 use crate::error::AppResult;
+use crate::store::fired::DEPTH_VAR;
 
 /// Lets a headless run use every Quarterdeck tool without asking.
 const QUARTERDECK_TOOLS: &str = "mcp__quarterdeck";
 
-/// The Quarterdeck MCP server for a headless run: this same binary, started with `mcp`.
-fn quarterdeck_server() -> AppResult<String> {
+/// The Quarterdeck MCP server for a headless run: this same binary, started with `mcp`. Events
+/// the run causes are `depth` steps down the chain that started it.
+fn quarterdeck_server(depth: u32) -> AppResult<String> {
     let exe = std::env::current_exe()?;
     let config = serde_json::json!({
-        "mcpServers": { "quarterdeck": { "command": exe, "args": ["mcp"] } }
+        "mcpServers": { "quarterdeck": {
+            "command": exe, "args": ["mcp"], "env": { DEPTH_VAR: depth.to_string() }
+        } }
     });
     Ok(config.to_string())
 }
@@ -36,6 +48,8 @@ pub struct Ask<'a> {
     pub permission_mode: Option<&'a str>,
     /// The run record whose steps to log for the Agent tab, if it has one.
     pub run: Option<i64>,
+    /// How many events led to this run; 0 for anything not started by one.
+    pub depth: u32,
 }
 
 /// Which Claude Code session a run belongs to.
@@ -51,10 +65,10 @@ pub enum Session<'a> {
 }
 
 /// Sends one prompt and returns Claude's reply text. The Quarterdeck tools are always available.
-pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<String> {
+pub async fn ask_with(claude: &Program, prompt: &str, opts: &Ask<'_>) -> AppResult<String> {
     let mut allowed = vec![QUARTERDECK_TOOLS.to_owned()];
     allowed.extend_from_slice(opts.tools);
-    let program = cli::resolve(command);
+    let program = cli::resolve(&claude.command);
     let mut cmd = Command::new(&program);
     if let Some(path) = cli::path_beside(&program) {
         cmd.env("PATH", path);
@@ -62,9 +76,10 @@ pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<
     cmd.arg("-p")
         .arg(prompt)
         .arg("--mcp-config")
-        .arg(quarterdeck_server()?)
+        .arg(quarterdeck_server(opts.depth)?)
         .arg("--allowedTools")
         .arg(allowed.join(","));
+    claude.lock(&mut cmd);
     if let Some(dir) = opts.cwd {
         cmd.current_dir(dir);
     }
@@ -80,6 +95,6 @@ pub async fn ask_with(command: &str, prompt: &str, opts: &Ask<'_>) -> AppResult<
 }
 
 /// Sends one prompt with only the Quarterdeck tools.
-pub async fn ask(command: &str, prompt: &str) -> AppResult<String> {
-    ask_with(command, prompt, &Ask::default()).await
+pub async fn ask(claude: &Program, prompt: &str) -> AppResult<String> {
+    ask_with(claude, prompt, &Ask::default()).await
 }

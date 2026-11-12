@@ -6,20 +6,20 @@ use tauri::{AppHandle, Manager as _};
 use super::run_turn;
 use super::thread::Thread;
 use crate::app::App;
-use crate::claude::{self, Ask, Session};
+use crate::claude::{self, Ask, Program, Session, reach};
 use crate::config::Config;
 use crate::config::prompts::{Prompt, render};
 use crate::config::settings::Settings;
 use crate::config::turns::TurnSettings;
 use crate::domain::run::{Outcome, Run};
 use crate::error::AppResult;
-use crate::store::{runs, watch};
+use crate::store::{asks, run_prompts, runs, watch};
 use crate::workspace::{self, Kind, Workspace};
 
 #[derive(Debug, Clone)]
 pub struct Job {
     /// Shown on the Agent tab, e.g. "Fix CI".
-    pub what: &'static str,
+    pub what: String,
     pub item_id: String,
     pub prompt: String,
     pub thread: Thread,
@@ -27,17 +27,28 @@ pub struct Job {
     pub tools: Vec<String>,
     /// The worktree to make first, for work in a project. Edits are allowed there.
     pub workspace: Option<Workspace>,
+    /// The answered question this run delivers. It's removed once the run reached the agent, so an
+    /// answer the agent never got goes again when it's back.
+    pub ask: Option<i64>,
 }
 
 impl Job {
-    pub const fn new(what: &'static str, item_id: String, prompt: String, thread: Thread) -> Self {
+    pub fn new(what: &str, item_id: String, prompt: String, thread: Thread) -> Self {
         Self {
-            what,
+            what: what.to_owned(),
             item_id,
             prompt,
             thread,
             tools: Vec::new(),
             workspace: None,
+            ask: None,
+        }
+    }
+
+    pub fn delivering(self, ask: i64) -> Self {
+        Self {
+            ask: Some(ask),
+            ..self
         }
     }
 
@@ -62,7 +73,7 @@ async fn start_record(
     let record = Run {
         id: 0,
         schedule_id: None,
-        what: job.what.to_owned(),
+        what: job.what.clone(),
         target: job.item_id.clone(),
         node: settings.node.clone(),
         started_at: started,
@@ -85,8 +96,16 @@ fn first_line(text: &str) -> String {
 /// A new session on an issue starts with the issue's text, which Claude may not be able to fetch.
 async fn prompt_for(job: &Job) -> AppResult<String> {
     match (&job.workspace, &job.thread) {
-        (Some(ws), Thread::Start(_)) if ws.kind == Kind::Issue => {
-            let issue = workspace::issue_text(ws).await?;
+        (
+            Some(
+                ws @ Workspace {
+                    kind: Kind::Issue(number),
+                    ..
+                },
+            ),
+            Thread::Start(_),
+        ) => {
+            let issue = workspace::issue_text(ws, *number).await?;
             Ok(format!("{}\n\n---\n\n{issue}", job.prompt))
         }
         _ => Ok(job.prompt.clone()),
@@ -95,8 +114,10 @@ async fn prompt_for(job: &Job) -> AppResult<String> {
 
 /// How to run a job: `mode` applies to work in a project's worktree, `run` is its record.
 struct How {
-    /// An error when this build may not run Claude; the run records it as failed.
-    command: AppResult<String>,
+    /// An error when Claude can't be set up to run; the run records it as failed.
+    command: AppResult<Program>,
+    /// Whether this build may run Claude at all; a dev build that may not hands the turn back.
+    may_run: bool,
     mode: String,
     run: i64,
     started: DateTime<Utc>,
@@ -129,6 +150,7 @@ async fn ask(how: &How, job: &Job) -> String {
         cwd: s.cwd.as_deref(),
         permission_mode: job.workspace.as_ref().map(|_| how.mode.as_str()),
         run: Some(how.run),
+        depth: 0,
     };
     match claude::ask_with(command, &prompt, &opts).await {
         Ok(text) => first_line(&text),
@@ -139,11 +161,19 @@ async fn ask(how: &How, job: &Job) -> String {
 /// Runs the job to its end, then records it and settles the item's turn.
 async fn work(handle: AppHandle, job: Job, how: How) {
     let summary = ask(&how, &job).await;
-    let outcome = if summary.starts_with("failed: ") {
+    let failure = summary.strip_prefix("failed: ");
+    let outcome = if failure.is_some() {
         Outcome::Failed
     } else {
         Outcome::Ok
     };
+    // Before the run is marked finished, so the answer can't be picked up and sent twice. If this
+    // fails the answer goes again, which beats losing it.
+    if let Some(ask) = job.ask
+        && !failure.is_some_and(reach::unreached)
+    {
+        drop(asks::remove(&handle.state::<App>().db, ask).await);
+    }
     if outcome == Outcome::Ok
         && let Some(ws) = &job.workspace
     {
@@ -157,10 +187,12 @@ async fn work(handle: AppHandle, job: Job, how: How) {
     drop(runs::finish(&handle.state::<App>().db, how.run, outcome, &summary).await);
     let ended = run_turn::Ended {
         item_id: &job.item_id,
-        what: job.what,
+        what: &job.what,
         summary: &summary,
         started: how.started,
-        may_run: how.command.is_ok(),
+        may_run: how.may_run,
+        run: how.run,
+        new_session: matches!(job.thread, Thread::Start(_)),
     };
     // Nothing is left to tell if even this fails; the run record above still shows it.
     drop(run_turn::settle(&handle, &ended, &how.limits).await);
@@ -175,16 +207,20 @@ fn with_hand_over(config: &Config, job: Job) -> AppResult<Job> {
 
 pub async fn run(handle: &AppHandle, settings: &Settings, job: Job) -> AppResult<()> {
     let app = handle.state::<App>();
+    let asked = job.prompt.clone();
     let job = with_hand_over(&app.config, job)?;
-    run_turn::take(&app.db, (&job.item_id, job.what), &settings.turns).await?;
+    run_turn::take(&app.db, (&job.item_id, &job.what), &settings.turns).await?;
     let started = Utc::now();
     let how = How {
-        command: settings.claude().map(str::to_owned),
+        command: settings.claude(),
+        may_run: settings.may_run_claude(),
         mode: settings.project_permission_mode.clone(),
         run: start_record(handle, settings, &job, started).await?,
         started,
         limits: settings.turns.clone(),
     };
+    // Kept only so a failed run can be retried; the run goes ahead without it.
+    drop(run_prompts::keep(&app.db, how.run, &asked).await);
     // A new session is the item's from now on, so later answers and CI results resume it.
     if let Thread::Start(session) = &job.thread
         && let Err(e) = watch::claim(&app.db, &job.item_id, session).await

@@ -1,14 +1,13 @@
 //! Items the agent works on one at a time, in the order `[queue]` lists them. The first one not
 //! yet in review or done is current: it starts when it's up next, and the queue waits while it's in
-//! progress. Starting one gives the agent the turn and `prompts/queue.md`.
+//! progress. Up-next work that is parked or waiting can't start, so it's passed over until it can. Starting one gives the agent the turn and `prompts/queue.md`.
 
 use crate::domain::ask::Ask;
-use crate::domain::item::{ItemInput, Stage, WorkItem};
+use crate::domain::item::{Stage, WorkItem};
 use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::store::{Db, asks};
 use crate::turns::{self, Clock, Pass};
-use crate::work;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Next<'a> {
@@ -25,8 +24,10 @@ pub fn next<'a>(queue: &[String], items: &'a [WorkItem]) -> Next<'a> {
         let Some(item) = items.iter().find(|i| &i.id == id) else {
             continue;
         };
-        match item.stage {
+        match item.stage() {
             Stage::InReview | Stage::Done => {}
+            // Parked or waiting before it starts: it can't start yet, so the queue goes on.
+            Stage::UpNext if item.is_turn(Turn::Later) || item.is_turn(Turn::Others) => {}
             Stage::UpNext => return Next::Start(item),
             Stage::InProgress => return Next::Wait(item),
         }
@@ -34,33 +35,21 @@ pub fn next<'a>(queue: &[String], items: &'a [WorkItem]) -> Next<'a> {
     Next::Finished
 }
 
-/// Leaves `message` for the scheduler to take to Claude, and marks the item in progress so the
-/// queue waits for it.
+/// Leaves `message` for the scheduler to take to Claude, and gives the agent the turn, which starts
+/// the item, so the queue waits for it.
 pub async fn start(db: &Db, item: &WorkItem, message: &str, clock: Clock<'_>) -> AppResult<()> {
-    let now = clock.now;
     let ask = Ask {
         item_id: item.id.clone(),
         ..Ask::default()
     };
     let id = asks::insert(db, &ask).await?;
     asks::answer(db, id, message).await?;
-    let input = ItemInput {
-        id: item.id.clone(),
-        title: item.title.clone(),
-        state_label: item.state_label.clone(),
-        stage: Stage::InProgress,
-        status: item.status,
-        area: item.area.clone(),
-        link: item.link.clone(),
-    };
-    work::save(db, input, now).await?;
     let pass = Pass::to(Turn::Agent, "next in the queue");
     turns::pass(db, &item.id, pass, clock).await
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
 
     use super::*;
     use crate::config::turns::TurnSettings;
@@ -68,22 +57,9 @@ mod tests {
 
     fn item(id: &str, stage: Stage) -> WorkItem {
         WorkItem {
-            id: id.to_owned(),
-            title: "t".to_owned(),
-            state_label: String::new(),
-            stage,
-            status: None,
-            turn: Turn::You,
-            turn_until: None,
-            waiting_on: None,
-            then_turn: None,
             area: "projects".to_owned(),
-            link: None,
             source: "manual".to_owned(),
-            external_id: None,
-            opened_at: Utc::now(),
-            state_since: Utc::now(),
-            rank: 0,
+            ..WorkItem::sample(id, crate::lifecycle::new(stage, ""))
         }
     }
 
@@ -105,6 +81,20 @@ mod tests {
         assert!(matches!(next(&ids(&["d", "b"]), &all), Next::Wait(i) if i.id == "d"));
         assert!(matches!(next(&ids(&["a"]), &all), Next::Finished));
         assert!(matches!(next(&[], &all), Next::Finished));
+        let parked = WorkItem {
+            life: crate::domain::life::Life::open_as(
+                crate::domain::life::Phase::UpNext,
+                crate::domain::life::Whose::Later {
+                    then: None,
+                    wake: Vec::new(),
+                    note: Some("needs the new API".to_owned()),
+                },
+                None,
+            ),
+            ..item("p", Stage::UpNext)
+        };
+        let with_parked = [parked, item("c", Stage::UpNext)];
+        assert!(matches!(next(&ids(&["p", "c"]), &with_parked), Next::Start(i) if i.id == "c"));
     }
 
     #[tokio::test]

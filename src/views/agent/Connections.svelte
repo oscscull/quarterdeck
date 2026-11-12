@@ -12,7 +12,11 @@
 
   let { connections, now }: Props = $props();
 
-  const NAMES: Record<string, CopyKey> = { github: "connections.github", calendar: "connections.calendar" };
+  const NAMES: Record<string, CopyKey> = {
+    github: "connections.github",
+    "github-issue": "connections.githubIssues",
+    calendar: "connections.calendar",
+  };
   const nameOf = (c: Connection): string => {
     const key = NAMES[c.name];
     return key ? t(key) : c.name;

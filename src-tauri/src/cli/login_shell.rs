@@ -1,5 +1,6 @@
 //! Asking the user's login shell where a command is, with a deadline: a login profile can hang on
-//! a keychain prompt or a slow version manager.
+//! a keychain prompt or a slow version manager. The shell runs interactive too, as version
+//! managers like nvm are often set up in `.zshrc`, which a login shell alone doesn't read.
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -18,7 +19,7 @@ pub enum Lookup {
 pub fn lookup(command: &str) -> Lookup {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_owned());
     let Ok(mut child) = Command::new(shell)
-        .args(["-lc", &format!("command -v '{command}'")])
+        .args(["-ilc", &format!("command -v '{command}'")])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

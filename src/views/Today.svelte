@@ -12,14 +12,18 @@
   import { clock, dayClock, until } from "../lib/time";
   import type { Commitment, TodayView } from "../lib/types";
   import { openItem } from "../lib/detail.svelte";
+  import { parkedItems } from "../lib/items.svelte";
   import { mergeToday } from "../lib/merge";
   import { nav } from "../lib/nav.svelte";
   import { describe, keyOf } from "../lib/priority";
   import { fromPeers } from "../lib/peers.svelte";
   import { route } from "../lib/route";
   import { changed } from "../lib/refresh.svelte";
+  import AgentDownBanner from "./today/AgentDownBanner.svelte";
   import CommitmentModal from "./today/CommitmentModal.svelte";
   import TodoList from "./today/TodoList.svelte";
+  import TriageLine from "./today/TriageLine.svelte";
+  import ParkedLine from "./today/ParkedLine.svelte";
   import UrgentModal from "./today/UrgentModal.svelte";
   import UrgentPill from "./today/UrgentPill.svelte";
 
@@ -51,6 +55,9 @@
 
   $effect(() => poll(load));
 
+  const { state: parked, load: loadParked } = parkedItems();
+  $effect(() => poll(loadParked));
+
   // Everything on Today follows the area switcher.
   const upcoming = $derived(data?.upcoming.filter(inArea) ?? []);
   const next = $derived(upcoming[0]);
@@ -59,17 +66,19 @@
   const priorities = $derived(data ? allPriorities.slice(0, data.priorityLimit) : []);
   const hiddenPriorities = $derived(allPriorities.length - priorities.length);
   const todos = $derived(data?.todos.filter(inArea) ?? []);
+  const triage = $derived(data?.triage?.filter(inArea) ?? []);
   const activity = $derived(data?.activity.filter(inArea) ?? []);
   const urgent = $derived(data?.urgent.filter(inArea) ?? []);
 
   $effect(() => {
-    chatContext.text = JSON.stringify({ area: areas.current, upcoming, priorities, todos, activity, urgent });
+    chatContext.text = JSON.stringify({ area: areas.current, upcoming, priorities, triage, todos, activity, urgent });
   });
 </script>
 
 <div class="column">
   <LoadError {error} />
   {#if data}
+    <AgentDownBanner outage={data.outage ?? null} onChanged={load} />
     <section class="next" aria-label={t("today.next")}>
       <div class="label-row">
         <span class="section-label">{t("today.next")}</span>
@@ -114,12 +123,16 @@
             <li class="answer-row"><TellClaude itemId={p.itemId} node={p.node} link={p.link} /></li>
           {/if}
         {:else}
-          <li class="hint">{t("today.noPriorities")}</li>
+          {#if triage.length === 0}
+            <li class="hint">{t("today.noPriorities")}</li>
+          {/if}
         {/each}
       </ul>
       {#if hiddenPriorities > 0}
         <button type="button" class="link more" onclick={() => (nav.view = "priorities")}>{t("today.more", { n: hiddenPriorities })}</button>
       {/if}
+      <TriageLine issues={triage} />
+      <ParkedLine items={parked.items.filter(inArea)} {now} />
     </section>
 
     <TodoList {todos} {now} onChanged={load} />

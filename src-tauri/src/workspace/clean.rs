@@ -67,9 +67,9 @@ mod tests {
         let ws = Workspace {
             project: PathBuf::new(),
             repo: String::new(),
-            number: 1,
-            kind: super::super::Kind::Pr,
+            kind: super::super::Kind::Pr(1),
             dir: dir.clone(),
+            branch: None,
             clean_after_run: vec!["app/target".to_owned(), "missing".to_owned()],
         };
         clean(&ws).unwrap();

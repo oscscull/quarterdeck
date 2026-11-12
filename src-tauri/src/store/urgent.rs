@@ -13,6 +13,7 @@ fn from_row(row: UrgentRow) -> AppResult<Urgent> {
         area: row.area,
         raised_at: time::get(&row.raised_at)?,
         schedule_id: row.schedule_id,
+        run_id: row.run_id,
     })
 }
 
@@ -31,16 +32,17 @@ pub async fn find(db: &Db, id: i64) -> AppResult<Urgent> {
     from_row(row.ok_or_else(|| AppError::NotFound(format!("urgent item {id}")))?)
 }
 
-/// Stores a new urgent item; its `id` is ignored and assigned by the database.
-pub async fn raise(db: &Db, item: &Urgent) -> AppResult<()> {
+/// Stores a new urgent item and returns its id; the `id` given is ignored.
+pub async fn raise(db: &Db, item: &Urgent) -> AppResult<i64> {
     let input = client::RaiseUrgentInput {
         title: item.title.clone(),
         detail: item.detail.clone(),
         area: item.area.clone(),
         raised_at: time::put(item.raised_at),
         schedule_id: item.schedule_id.clone(),
+        run_id: item.run_id,
     };
-    Ok(db.api().raise_urgent(input, ()).await?)
+    int(&db.api().raise_urgent(input, ()).await?.id)
 }
 
 /// Dismissing deletes: an urgent item has no life after it is dealt with.

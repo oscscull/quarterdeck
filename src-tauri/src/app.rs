@@ -38,6 +38,7 @@ impl App {
         let ttl = Ttl {
             activity: Duration::days(settings.activity_ttl_days),
             runs: Duration::days(settings.run_ttl_days),
+            events: Duration::days(settings.event_ttl_days),
             done_todos: Duration::days(settings.done_todo_ttl_days),
             done_items: Duration::days(settings.done_item_ttl_days),
         };

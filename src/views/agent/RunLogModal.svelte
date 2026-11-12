@@ -48,7 +48,7 @@
   {#if steps.length === 0 && live}<p class="hint">{t("runLog.empty")}</p>{/if}
   <ol>
     {#each steps as step, i (i)}
-      <li class:failed={step.kind === "failed"} class:said={step.kind === "said"}>
+      <li class:failed={step.kind === "failed"} class:said={step.kind === "said"} class:output={step.kind === "output"}>
         <span class="mono at">{clock(step.at)}</span>
         <span class="text">{stepText(step)}</span>
       </li>
@@ -71,6 +71,11 @@
     gap: 12px;
     font-size: 14px;
     color: var(--muted);
+  }
+
+  li.output .text {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 13px;
   }
 
   li.said {

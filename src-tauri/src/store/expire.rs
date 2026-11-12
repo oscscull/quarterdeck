@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use super::client;
 use super::db::Db;
-use super::{items, time};
+use super::{fired, items, time};
 use crate::error::AppResult;
 
 /// Meetings are only useful until shortly after they end.
@@ -15,11 +15,12 @@ const PAST_MEETINGS: Duration = Duration::days(1);
 pub struct Ttl {
     pub activity: Duration,
     pub runs: Duration,
+    pub events: Duration,
     pub done_todos: Duration,
     pub done_items: Duration,
 }
 
-/// Removes stored output past its TTL: activity, finished runs, done to-dos, past meetings and
+/// Removes stored output past its TTL: activity, finished runs, events, done to-dos, past meetings and
 /// their alerts and calendar snapshots, and done items with their history. Live runs are kept.
 pub async fn expire(db: &Db, now: DateTime<Utc>, ttl: Ttl) -> AppResult<()> {
     let api = db.api();
@@ -54,6 +55,7 @@ pub async fn expire(db: &Db, now: DateTime<Utc>, ttl: Ttl) -> AppResult<()> {
     .await?;
     api.expire_sync_snapshots(client::ExpireSyncSnapshotsInput {}, ())
         .await?;
+    fired::expire(db, now - ttl.events).await?;
     for id in items::done_before(db, now - ttl.done_items).await? {
         items::delete(db, &id).await?;
     }

@@ -17,7 +17,7 @@
   const isEmpty = $derived(list.items.filter(inArea).length === 0);
 
   const columns = $derived(
-    STAGES.map((stage) => ({ stage, items: list.items.filter((i) => i.stage === stage && inArea(i)) })),
+    STAGES.map((stage) => ({ stage, items: list.items.filter((i) => i.stage === stage && i.turn !== "later" && inArea(i)) })),
   );
 
   $effect(() => {

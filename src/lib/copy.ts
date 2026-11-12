@@ -9,3 +9,8 @@ export function t(key: CopyKey, vars: Record<string, string | number> = {}): str
     en[key],
   );
 }
+
+/** True when the copy file has `key`, for keys built from data such as event names. */
+export function hasCopy(key: string): key is CopyKey {
+  return key in en;
+}

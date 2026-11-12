@@ -32,6 +32,7 @@ export function stepText(step: Step): string {
       return step.text ? t("step.failed", { text: step.text }) : t("step.failedBare");
     case "doing":
     case "said":
+    case "output":
       return step.text;
   }
 }

@@ -4,23 +4,44 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use chrono::Local;
+
 use super::{Config, frontmatter};
-use crate::domain::schedule::{Autonomy, Schedule, Scope, Trigger};
+use crate::cron::explain::explain;
+use crate::domain::fired;
+use crate::domain::schedule::Schedule;
+use crate::domain::script::Script;
+use crate::domain::trigger::Trigger;
 use crate::error::{AppError, AppResult};
 
-/// The TOML part of a schedule file.
+/// The TOML part of a schedule file. Files from before schedules had several triggers have one
+/// `trigger` instead; it's read into `triggers` and written back that way.
 #[derive(Debug, Serialize, Deserialize)]
 struct Settings {
     name: String,
     area: String,
-    scope: Scope,
-    autonomy: Autonomy,
     enabled: bool,
     #[serde(default)]
     request: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     allowed_tools: Vec<String>,
-    trigger: Trigger,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    script: Option<Script>,
+    #[serde(default, skip_serializing)]
+    trigger: Option<Trigger>,
+    #[serde(default)]
+    triggers: Vec<Trigger>,
+}
+
+impl Settings {
+    fn all_triggers(&mut self) -> Vec<Trigger> {
+        let old = self.trigger.take();
+        std::mem::take(&mut self.triggers)
+            .into_iter()
+            .chain(old)
+            .map(Trigger::normalised)
+            .collect()
+    }
 }
 
 /// Schedules that loaded, plus a message for each file that did not.
@@ -80,31 +101,58 @@ fn read(file: &Path) -> AppResult<Schedule> {
     let text = std::fs::read_to_string(file)?;
     let (front, body) = frontmatter::split(&text)
         .ok_or_else(|| AppError::NotFound(format!("settings block (+++) in {id}.md")))?;
-    let s: Settings = toml::from_str(front)?;
+    let mut s: Settings = toml::from_str(front)?;
     Ok(Schedule {
         id,
+        triggers: s.all_triggers(),
+        script: s.script.take(),
         name: s.name,
         prompt: body.to_owned(),
-        trigger: s.trigger,
         area: s.area,
-        scope: s.scope,
-        autonomy: s.autonomy,
         enabled: s.enabled,
         request: s.request,
         allowed_tools: s.allowed_tools,
     })
 }
 
+fn watchable(path: Option<&String>) -> bool {
+    path.is_some_and(|p| !p.is_empty() && !p.contains('*'))
+}
+
+/// Refuses triggers that could never fire: a bad cron expression or an unknown event.
+pub fn check(schedule: &Schedule) -> AppResult<()> {
+    for trigger in &schedule.triggers {
+        match trigger {
+            Trigger::Cron { expr } => drop(explain(expr, Local::now(), 1)?),
+            Trigger::Event(e) if !fired::known(&e.on) => {
+                return Err(AppError::BadInput(format!(
+                    "no event is called {}: see list_event_kinds, or start custom ones with {}",
+                    e.on,
+                    fired::CUSTOM
+                )));
+            }
+            Trigger::Event(e) if e.on == fired::FILE_CHANGED && !watchable(e.when.get("path")) => {
+                return Err(AppError::BadInput(format!(
+                    "a {} trigger needs `when.path`: the file or folder to watch, with no `*`",
+                    fired::FILE_CHANGED
+                )));
+            }
+            Trigger::Event(_) => {}
+        }
+    }
+    Ok(())
+}
+
 pub fn save(config: &Config, schedule: &Schedule) -> AppResult<()> {
     let settings = Settings {
         name: schedule.name.clone(),
         area: schedule.area.clone(),
-        scope: schedule.scope,
-        autonomy: schedule.autonomy,
         enabled: schedule.enabled,
         request: schedule.request.clone(),
         allowed_tools: schedule.allowed_tools.clone(),
-        trigger: schedule.trigger.clone(),
+        script: schedule.script.clone(),
+        trigger: None,
+        triggers: schedule.triggers.clone(),
     };
     let text = frontmatter::join(&toml::to_string(&settings)?, &schedule.prompt);
     std::fs::write(checked_path(config, &schedule.id)?, text)?;
@@ -147,6 +195,54 @@ mod tests {
     fn slugs_names() {
         assert_eq!(slug("End-of-day wrap!"), "end-of-day-wrap");
         assert_eq!(slug("  "), "schedule");
+    }
+
+    #[test]
+    fn reads_old_single_trigger_files() {
+        let front = "name = \"CI\"\narea = \"work\"\nscope = \"each_pr\"\nautonomy = \"ask\"\n\
+                     enabled = true\n[trigger]\ntype = \"event\"\nkind = \"ci_failed\"\n";
+        let mut s: Settings = toml::from_str(front).unwrap();
+        let all = s.all_triggers();
+        assert_eq!(all.len(), 1);
+        assert!(matches!(&all[0], Trigger::Event(e) if e.on == "github.ci_failed"));
+    }
+
+    #[test]
+    fn script_schedules_round_trip() {
+        use crate::domain::script::{Report, Script};
+        use crate::domain::trigger::OnEvent;
+        let dir = std::env::temp_dir().join("quarterdeck-test-script-schedule");
+        let config = Config::open(dir.clone()).unwrap();
+        std::fs::create_dir_all(dir.join("schedules")).unwrap();
+        let schedule = Schedule {
+            id: "backup".to_owned(),
+            name: "Backup".to_owned(),
+            prompt: "restic backup ~/Documents\n".to_owned(),
+            script: Some(Script {
+                cwd: Some("~/code".to_owned()),
+                timeout_minutes: 5,
+                report: Report::Always,
+            }),
+            triggers: vec![
+                Trigger::Cron {
+                    expr: "0 2 * * *".to_owned(),
+                },
+                Trigger::Event(OnEvent {
+                    on: "custom.deployed".to_owned(),
+                    when: [("env".to_owned(), "prod".to_owned())].into(),
+                    cooldown: 30,
+                }),
+            ],
+            area: "work".to_owned(),
+            enabled: true,
+            request: String::new(),
+            allowed_tools: Vec::new(),
+        };
+        save(&config, &schedule).unwrap();
+        let back = find(&config, "backup").unwrap();
+        assert_eq!(back.script, schedule.script);
+        assert_eq!(back.triggers, schedule.triggers);
+        assert_eq!(back.prompt, schedule.prompt.trim_end());
     }
 
     #[test]

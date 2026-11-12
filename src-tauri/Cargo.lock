@@ -284,8 +284,8 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "based-artifacts"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -293,13 +293,13 @@ dependencies = [
 
 [[package]]
 name = "based-ast"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 
 [[package]]
 name = "based-build"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-artifacts",
  "based-manifest",
@@ -310,8 +310,8 @@ dependencies = [
 
 [[package]]
 name = "based-codegen"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
  "based-diagnostics",
@@ -322,16 +322,16 @@ dependencies = [
 
 [[package]]
 name = "based-diagnostics"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
 ]
 
 [[package]]
 name = "based-manifest"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
  "based-diagnostics",
@@ -342,8 +342,8 @@ dependencies = [
 
 [[package]]
 name = "based-parser"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
  "based-diagnostics",
@@ -352,8 +352,8 @@ dependencies = [
 
 [[package]]
 name = "based-project"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
  "based-codegen",
@@ -365,8 +365,8 @@ dependencies = [
 
 [[package]]
 name = "based-runtime"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -379,6 +379,7 @@ dependencies = [
  "based-project",
  "based-sema",
  "bigdecimal",
+ "chrono",
  "futures-core",
  "futures-util",
  "rusqlite",
@@ -390,8 +391,8 @@ dependencies = [
 
 [[package]]
 name = "based-sema"
-version = "0.1.13"
-source = "git+https://github.com/oscscull/baseddsl#c19582c1b9a3425ceb8d02fcc20276a1e41be3e2"
+version = "1.0.0"
+source = "git+https://github.com/oscscull/baseddsl#def90464faa7b49cd0369787061fa6400759370b"
 dependencies = [
  "based-ast",
  "based-diagnostics",
@@ -1234,7 +1235,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3293,10 +3294,12 @@ dependencies = [
  "croner",
  "dirs 6.0.0",
  "ical",
+ "nix",
  "rrule",
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -3549,7 +3552,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3605,7 +3608,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4646,7 +4649,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5383,7 +5386,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

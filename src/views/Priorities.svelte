@@ -1,14 +1,19 @@
 <script lang="ts">
+  import Age from "../components/Age.svelte";
   import AreaDot from "../components/AreaDot.svelte";
   import Chip from "../components/Chip.svelte";
   import LoadError from "../components/LoadError.svelte";
+  import ParkedList from "../components/ParkedList.svelte";
+  import TurnFilter from "../components/TurnFilter.svelte";
   import { api, errorText } from "../lib/api";
   import { t } from "../lib/copy";
+  import { isInFlight, matchesTurn, type TurnFilter as Filter } from "../lib/groups";
+  import { age } from "../lib/time";
   import { turnText } from "../lib/turn";
   import { ALL, areas, inArea } from "../lib/areas.svelte";
   import { newItem, openItem } from "../lib/detail.svelte";
   import { chatContext } from "../lib/chat.svelte";
-  import { workItems } from "../lib/items.svelte";
+  import { parkedItems, workItems } from "../lib/items.svelte";
   import { poll } from "../lib/poll";
   import { reorder } from "../lib/rank";
   import { route } from "../lib/route";
@@ -18,13 +23,22 @@
   let dragging = $state<string | null>(null);
   let over = $state<number | null>(null);
   let saveError = $state("");
+  let filter = $state<Filter>("all");
 
   $effect(() => poll(load));
 
+  const { state: parked, load: loadParked } = parkedItems();
+  $effect(() => poll(loadParked));
+  const parkedHere = $derived(parked.items.filter(inArea));
+
   const inPlay = $derived(list.items.filter((i) => i.stage !== "done" && inArea(i)));
+  const visible = $derived(inPlay.filter((i) => matchesTurn(i, filter)));
+  const oldest = $derived(
+    inPlay.filter(isInFlight).reduce<string | null>((min, i) => (min === null || i.openedAt < min ? i.openedAt : min), null),
+  );
 
   $effect(() => {
-    chatContext.text = JSON.stringify({ area: areas.current, ranked: inPlay });
+    chatContext.text = JSON.stringify({ area: areas.current, turn: filter, ranked: visible, parked: parkedHere });
   });
 
   // Ids repeat across machines, so the list is keyed by machine and id.
@@ -42,7 +56,7 @@
 
   /** Moves `key` to `to` within the visible list. */
   async function move(key: string, to: number): Promise<void> {
-    const keys = reorder(list.items.map(keyOf), inPlay.map(keyOf), key, to);
+    const keys = reorder(list.items.map(keyOf), visible.map(keyOf), key, to);
     const byKey = new Map(list.items.map((i) => [keyOf(i), i]));
     list.items = keys.flatMap((k) => byKey.get(k) ?? []);
     const moved = byKey.get(key);
@@ -60,11 +74,12 @@
     dragging = null;
     over = null;
     if (!key) return;
-    const from = inPlay.findIndex((i) => keyOf(i) === key);
+    const from = visible.findIndex((i) => keyOf(i) === key);
     void move(key, from < index ? index - 1 : index);
   }
 
-  const showsTurn = (item: WorkItem): string => `${t(`stage.${item.stage}`)} · ${turnText(item)}`;
+  const meta = (item: WorkItem): string =>
+    [t(`stage.${item.stage}`), turnText(item), item.stateLabel].filter(Boolean).join(" · ");
 </script>
 
 <div class="column">
@@ -72,12 +87,16 @@
     <h1 class="page-title">{t("priorities.title")}</h1>
     <button type="button" class="button-primary" onclick={() => newItem(areas.current !== ALL ? areas.current : (areas.list[0]?.id ?? ""))}>{t("item.new")}</button>
   </div>
-  <p class="hint intro">{t("priorities.hint")}</p>
+  <p class="hint intro">
+    {t("priorities.hint")}
+    {#if oldest}{t("priorities.oldest", { age: age(oldest, list.now) })}{/if}
+  </p>
   <LoadError error={list.error} />
+  <TurnFilter items={inPlay} value={filter} onSelect={(f) => (filter = f)} />
   {#if saveError}<p class="error">{saveError}</p>{/if}
 
   <ol class="list">
-    {#each inPlay as item, i (keyOf(item))}
+    {#each visible as item, i (keyOf(item))}
       <li
         draggable="true"
         class:dragging={dragging === keyOf(item)}
@@ -88,22 +107,30 @@
         ondragend={() => { dragging = null; over = null; }}
       >
         <svg class="grip" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
-        <span class="mono rank">{i + 1}</span>
+        <span class="mono rank">{inPlay.indexOf(item) + 1}</span>
         <AreaDot area={item.area} />
         <span class="body">
           <button type="button" class="open" onclick={() => openItem(item.id, item.node)}><span class="mono id">{item.id}</span>&nbsp; {item.title}</button>
-          <span class="hint meta">{showsTurn(item)}</span>
+          <span class="hint meta">{meta(item)}</span>
         </span>
         {#if item.status}<Chip status={item.status} />{/if}
+        {#if isInFlight(item)}<span class="age"><Age since={item.openedAt} now={list.now} /></span>{/if}
         <span class="arrows">
           <button type="button" aria-label={t("priorities.moveUp", { title: item.title })} onclick={() => move(keyOf(item), i - 1)}>▲</button>
           <button type="button" aria-label={t("priorities.moveDown", { title: item.title })} onclick={() => move(keyOf(item), i + 1)}>▼</button>
         </span>
       </li>
     {:else}
-      <li class="hint empty">{t("empty.priorities")}</li>
+      <li class="hint empty">{t(filter === "all" ? "empty.priorities" : "empty.prioritiesTurn")}</li>
     {/each}
   </ol>
+
+  <section class="parked" aria-label={t("parked.title")}>
+    <h2 class="section-label">{t("parked.title")} <span class="mono count">{parkedHere.length}</span></h2>
+    <p class="hint intro-small">{t("parked.hint")}</p>
+    <LoadError error={parked.error} />
+    <ParkedList items={parkedHere} now={parked.now} />
+  </section>
 </div>
 
 <style>
@@ -119,6 +146,19 @@
     border: 0;
     background: transparent;
     text-align: left;
+  }
+
+  .parked {
+    margin-top: 40px;
+  }
+
+  .intro-small {
+    margin: 4px 0 12px;
+    font-size: 13px;
+  }
+
+  .count {
+    color: var(--muted);
   }
 
   .empty {
@@ -186,6 +226,12 @@
 
   .meta {
     font-size: 13px;
+  }
+
+  .age {
+    flex: none;
+    width: 32px;
+    text-align: right;
   }
 
   .arrows {

@@ -9,31 +9,39 @@ use super::{areas, client};
 use crate::config::settings::Settings;
 use crate::config::sync::Peer;
 use crate::config::{Config, schedules};
-use crate::domain::schedule::{Schedule, Trigger};
+use crate::domain::schedule::Schedule;
 use crate::error::{AppError, AppResult};
+use crate::jobs::approval;
 use crate::store::Db;
 
 /// The `create_schedule` arguments for a schedule.
 fn args(s: &Schedule) -> Value {
-    let (cron, event) = match &s.trigger {
-        Trigger::Cron { expr } => (Some(expr.clone()), None),
-        Trigger::Event { kind } => (None, Some(*kind)),
-    };
     json!({
-        "name": s.name, "area": s.area, "instructions": s.prompt, "cron": cron, "event": event,
-        "scope": s.scope, "autonomy": s.autonomy, "allowed_tools": s.allowed_tools, "request": s.request,
+        "name": s.name, "area": s.area, "instructions": s.prompt, "triggers": s.triggers,
+        "allowed_tools": s.allowed_tools, "request": s.request, "script": s.script,
     })
 }
 
+/// Approves a script schedule on `peer`. Only for scripts the user approved, or wrote in the app.
+fn approve_there(peer: &Peer, schedule: &Schedule, id: &str) -> AppResult<()> {
+    if schedule.script.is_some() {
+        client::call(peer, "approve_script", &json!({ "id": id }))?;
+    }
+    Ok(())
+}
+
 /// Creates the schedule on the peer that runs its area, if that's not this machine. Returns the
-/// peer's id for it, or `None` when it belongs here.
+/// peer's id for it, or `None` when it belongs here. Only the app's own window calls this, so a
+/// script is approved there as the user wrote it.
 pub fn create_elsewhere(settings: &Settings, schedule: &Schedule) -> AppResult<Option<String>> {
     let owner = settings.node_for(&schedule.area);
     let Some(peer) = settings.sync.peer(owner).filter(|_| owner != settings.node) else {
         return Ok(None);
     };
     let id = client::call(peer, "create_schedule", &args(schedule))?;
-    Ok(Some(id.as_str().unwrap_or_default().to_owned()))
+    let id = id.as_str().unwrap_or_default().to_owned();
+    approve_there(peer, schedule, &id)?;
+    Ok(Some(id))
 }
 
 /// Runs blocking network work off the calling thread.
@@ -68,10 +76,18 @@ async fn ready(db: &Db, settings: &Settings, owner: &str) -> AppResult<Option<Pe
         .then(|| peer.clone()))
 }
 
-/// Creates the schedule on `peer`, on or off as it was, then deletes it here. Returns its new id.
-fn hand_over(config: &Config, peer: &Peer, schedule: &Schedule) -> AppResult<String> {
+/// Creates the schedule on `peer`, on or off and approved or not as it was, then deletes it here.
+/// Returns its new id.
+fn hand_over(
+    config: &Config,
+    peer: &Peer,
+    (schedule, approved): (&Schedule, bool),
+) -> AppResult<String> {
     let id = client::call(peer, "create_schedule", &args(schedule))?;
     let id = id.as_str().unwrap_or_default().to_owned();
+    if approved {
+        approve_there(peer, schedule, &id)?;
+    }
     if !schedule.enabled {
         client::call(
             peer,
@@ -92,7 +108,8 @@ pub async fn move_misplaced(db: &Db, config: &Config, settings: &Settings) -> Ap
         };
         if let Some(peer) = ready(db, settings, owner).await? {
             let config = config.clone();
-            drop(off_thread(move || hand_over(&config, &peer, &schedule)).await);
+            let approved = approval::approved(db, &schedule).await?;
+            drop(off_thread(move || hand_over(&config, &peer, (&schedule, approved))).await);
         }
     }
     Ok(())
@@ -115,8 +132,9 @@ pub async fn run_elsewhere(
         )));
     };
     let config = config.clone();
+    let approved = approval::approved(db, &schedule).await?;
     off_thread(move || {
-        let id = hand_over(&config, &peer, &schedule)?;
+        let id = hand_over(&config, &peer, (&schedule, approved))?;
         client::call(&peer, "run_schedule", &json!({ "id": id }))
     })
     .await?;

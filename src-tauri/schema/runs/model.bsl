@@ -11,11 +11,14 @@ Run {
   finished_at: timestamp?
   outcome:     Outcome?
   summary:     text?
+  # What an agent run about an item was asked, so a failed one can be retried.
+  prompt:      text?
   @index(schedule_id, started_at)
   @index(finished_at, started_at)
   @index(target, finished_at)
 }
 shape RunRow from Run { id, schedule_id, what, target, node, started_at, finished_at, outcome, summary }
+shape RunRetryRow from Run { what, target, prompt }
 
 # "Run this schedule now", from outside the app (e.g. the MCP server). Taken on the next tick.
 @sort(id)

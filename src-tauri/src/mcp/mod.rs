@@ -1,6 +1,7 @@
 //! A Model Context Protocol server over stdio, so any Claude session can read and change Quarterdeck.
 //! Started as `<app binary> mcp`. It works on the same database and config folder as the app.
 
+pub mod command_line;
 mod ctx;
 mod protocol;
 mod tool;
@@ -13,9 +14,14 @@ use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 
-/// Every Quarterdeck tool, for the MCP server and the peer server.
+/// Every Quarterdeck tool agents get, through the MCP server.
 pub fn registry() -> Vec<Tool> {
     tools::all()
+}
+
+/// What peers get: every tool, plus the ones only the user's own app may use.
+pub fn peer_registry() -> Vec<Tool> {
+    tools::all().into_iter().chain(tools::peer_only()).collect()
 }
 
 /// Runs one tool by name.
@@ -39,7 +45,7 @@ async fn serve_stdio() -> ExitCode {
     let Ok(ctx) = Ctx::open().await else {
         return ExitCode::FAILURE;
     };
-    let registry = tools::all();
+    let registry = registry();
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     // Requests come one at a time and each is answered before the next is read.

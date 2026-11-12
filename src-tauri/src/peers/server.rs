@@ -3,10 +3,12 @@
 //! (`[sync] lan`); never anywhere else. Every request needs the token.
 
 use std::io::Cursor;
+use std::net::SocketAddr;
 
 use serde_json::{Value, json};
 use tiny_http::{Header, Method, Request, Response, Server};
 
+use super::addresses;
 use super::reach::{Listen, allowed};
 use crate::error::{AppError, AppResult};
 use crate::mcp::{self, Ctx, Tool};
@@ -42,7 +44,7 @@ pub fn run(listen: Listen) -> AppResult<()> {
 }
 
 fn serve(server: &Server, ctx: &Ctx) {
-    let tools = mcp::registry();
+    let tools = mcp::peer_registry();
     for mut request in server.incoming_requests() {
         // Read fresh each time, so a new token (`new_sync_token`) works without a restart.
         let token = ctx.settings().map(|s| s.sync.token).unwrap_or_default();
@@ -91,7 +93,8 @@ fn respond(ctx: &Ctx, tools: &[Tool], token: &str, request: &mut Request) -> Rep
         (Method::Get, "/v1/health") => health(ctx),
         (Method::Post, p) if p.starts_with("/v1/tools/") => {
             let name = p.trim_start_matches("/v1/tools/").to_owned();
-            run_tool(ctx, tools, &name, request)
+            let seen = request.remote_addr().copied();
+            run_tool(ctx, tools, (&name, seen), request)
         }
         _ => json_reply(404, &json!({ "error": "unknown path" })),
     }
@@ -104,7 +107,28 @@ fn health(ctx: &Ctx) -> Reply {
     }
 }
 
-fn run_tool(ctx: &Ctx, tools: &[Tool], name: &str, request: &mut Request) -> Reply {
+/// A `hello` is told where the call came from, whatever the caller said.
+fn with_seen(name: &str, seen: Option<SocketAddr>, mut args: Value) -> Value {
+    if name != "hello" {
+        return args;
+    }
+    let port = args.get("port").and_then(Value::as_u64);
+    let url = seen
+        .zip(port.and_then(|p| u16::try_from(p).ok()))
+        .map(|(addr, port)| addresses::url_at(addr, port));
+    if let Some(fields) = args.as_object_mut() {
+        fields.insert("seen".to_owned(), json!(url));
+    }
+    args
+}
+
+fn run_tool(
+    ctx: &Ctx,
+    tools: &[Tool],
+    call: (&str, Option<SocketAddr>),
+    request: &mut Request,
+) -> Reply {
+    let (name, seen) = call;
     let mut body = String::new();
     let parsed = request
         .as_reader()
@@ -117,6 +141,7 @@ fn run_tool(ctx: &Ctx, tools: &[Tool], name: &str, request: &mut Request) -> Rep
                 serde_json::from_str(&body)?
             })
         })
+        .map(|args| with_seen(name, seen, args))
         .and_then(|args| block_on(mcp::call(ctx, tools, name, args)));
     match parsed {
         Ok(value) => json_reply(200, &json!({ "ok": value })),
@@ -160,5 +185,14 @@ mod tests {
         assert_eq!(todos[0]["title"], "Make dinner");
         assert!(client::health(&peer_on(port, "wrong")).is_err());
         assert!(client::call(&good, "no_such_tool", &json!({})).is_err());
+        let hello = json!({ "from": "work-mac", "port": 4791, "seen": "http://forged:1",
+                            "urls": ["http://Work-Mac.local:4791"] });
+        client::call(&good, "hello", &hello).unwrap();
+        let db = block_on(crate::store::Db::open(&dir.join("data"))).unwrap();
+        let learned = block_on(addresses::learned(&db, "work-mac")).unwrap();
+        assert_eq!(
+            learned,
+            ["http://127.0.0.1:4791", "http://Work-Mac.local:4791"]
+        );
     }
 }

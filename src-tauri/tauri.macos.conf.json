@@ -1,6 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/quarterdeck-calendars"]
+    "externalBin": ["binaries/quarterdeck-calendars"],
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

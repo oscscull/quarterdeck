@@ -6,6 +6,7 @@
     title: string;
     area: string;
     due: string;
+    link: string;
   }
 
   interface Props {
@@ -40,6 +41,10 @@
   <label class="field">
     {t("todo.due")}
     <input class="input" type="date" bind:value={fields.due} />
+  </label>
+  <label class="field what">
+    {t("todo.link")}
+    <input class="input" type="url" bind:value={fields.link} placeholder={t("todo.linkPlaceholder")} />
   </label>
   <div class="buttons">
     {#if onDelete}

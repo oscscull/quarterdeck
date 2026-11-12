@@ -7,12 +7,10 @@ use serde::Serialize;
 use crate::config::settings::Settings;
 use crate::domain::ask::Ask;
 use crate::domain::event::Change;
-use crate::domain::item::{ItemInput, Status};
 use crate::domain::turn::Turn;
 use crate::error::{AppError, AppResult};
 use crate::store::{Db, asks, events, items};
 use crate::turns::{self, Clock, Pass};
-use crate::work;
 
 fn nonempty(text: &str) -> AppResult<&str> {
     let text = text.trim();
@@ -60,30 +58,11 @@ pub async fn tell(db: &Db, settings: &Settings, item_id: &str, message: &str) ->
     hand_over(db, settings, &ask, format!("you said: {message}")).await
 }
 
-/// Clears a decision the item was waiting on, now that the user replied.
-async fn settle_decision(db: &Db, item_id: &str) -> AppResult<()> {
-    let item = items::get(db, item_id).await?;
-    if item.status != Some(Status::Decision) {
-        return Ok(());
-    }
-    let input = ItemInput {
-        id: item.id,
-        title: item.title,
-        state_label: item.state_label,
-        stage: item.stage,
-        status: None,
-        area: item.area,
-        link: item.link,
-    };
-    work::save(db, input, Utc::now()).await.map(drop)
-}
-
 /// A reply ends the user's turn: the agent has it, unless another question on the item is open.
 async fn hand_over(db: &Db, settings: &Settings, ask: &Ask, why: String) -> AppResult<()> {
     if !asks::for_item(db, &ask.item_id).await?.is_empty() {
         return Ok(());
     }
-    settle_decision(db, &ask.item_id).await?;
     let pass = Pass::to(Turn::Agent, why);
     turns::pass(db, &ask.item_id, pass, Clock::now(&settings.turns)).await
 }
@@ -91,7 +70,8 @@ async fn hand_over(db: &Db, settings: &Settings, ask: &Ask, why: String) -> AppR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::item::Stage;
+    use crate::domain::item::{ItemInput, Stage};
+    use crate::work;
 
     async fn decision(db: &Db, id: &str) {
         let input = ItemInput {
@@ -99,7 +79,7 @@ mod tests {
             title: "t".to_owned(),
             state_label: "your call".to_owned(),
             stage: Stage::InReview,
-            status: Some(Status::Decision),
+            status: None,
             area: "work".to_owned(),
             link: None,
         };
@@ -123,14 +103,13 @@ mod tests {
         let first = ask(&db, "a").await;
         let second = ask(&db, "a").await;
         give(&db, &settings, first, "Yes").await.unwrap();
-        assert_eq!(items::get(&db, "a").await.unwrap().turn, Turn::You);
+        assert!(items::get(&db, "a").await.unwrap().is_turn(Turn::You));
         give(&db, &settings, second, "No").await.unwrap();
-        let a = items::get(&db, "a").await.unwrap();
-        assert_eq!((a.turn, a.status), (Turn::Agent, None));
+        assert!(items::get(&db, "a").await.unwrap().is_turn(Turn::Agent));
 
         decision(&db, "b").await;
         tell(&db, &settings, "b", "fix the conflict").await.unwrap();
-        assert_eq!(items::get(&db, "b").await.unwrap().turn, Turn::Agent);
+        assert!(items::get(&db, "b").await.unwrap().is_turn(Turn::Agent));
     }
 
     #[tokio::test]

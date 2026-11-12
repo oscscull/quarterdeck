@@ -13,6 +13,8 @@ pub enum StepKind {
     Said,
     /// A tool call that came back with an error.
     Failed,
+    /// A line a script printed; `tool` is `stderr` for its error output.
+    Output,
 }
 
 /// One step of a live run, short enough to show on one line.

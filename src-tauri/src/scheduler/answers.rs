@@ -1,7 +1,9 @@
-//! Takes the user's answers back to Claude. Work on a PR or issue in a known project happens in that
-//! project's worktree: the asking session is resumed if it ran there, otherwise a new session
+//! Takes the user's answers back to Claude. Work on a PR, issue or repo in a known project happens in
+//! that project's worktree: the asking session is resumed if it ran there, otherwise a new session
 //! starts there with the question and answer. Elsewhere the session that asked, or the one holding
-//! the item, is resumed. With nobody to tell, the user is told instead (see `undelivered`).
+//! the item, is resumed, and with neither a new session starts in Quarterdeck's folder, told why
+//! it has no checkout so it can fix the item's link or ask. An answer stays until a run reaches the
+//! agent with it, so one sent while the agent is down goes again when it's back.
 
 use std::collections::HashSet;
 
@@ -10,17 +12,16 @@ use tauri::{AppHandle, Manager as _};
 use super::dispatch::{self, Job};
 use super::failed::{self, Failure};
 use super::thread::{self, Thread};
-use super::undelivered;
 use crate::app::App;
+use crate::claude::{reach, sessions};
 use crate::config::prompts::{Prompt, render};
 use crate::config::settings::Settings;
 use crate::domain::ask::Answered;
 use crate::domain::item::WorkItem;
 use crate::domain::session::SessionRef;
 use crate::error::AppResult;
-use crate::store::{asks, items, runs, watch};
-use crate::turns::Clock;
-use crate::workspace::{self, Workspace};
+use crate::store::{asks, items, runs};
+use crate::workspace::{self, Located, Missing, Workspace};
 
 pub async fn deliver(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
     let app = handle.state::<App>();
@@ -36,26 +37,43 @@ pub async fn deliver(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
             continue;
         }
         let item = items::get(&app.db, &answered.ask.item_id).await?;
-        // Another machine runs this area's agents and delivers there.
-        if settings.node_for(&item.area) != settings.node {
-            continue;
-        }
-        if let Err(e) = deliver_one(handle, settings, &answered, &item).await {
-            let detail = e.to_string();
-            let failure = Failure {
-                item_id: &item.id,
-                what: "Answer",
-                detail: &detail,
-            };
-            failed::report(handle, &failure, &settings.turns).await?;
+        match deliver_one(handle, settings, &answered, &item).await {
+            // The run removes the answer once it reaches the agent.
+            Ok(()) => {}
+            Err(e) => not_started(handle, settings, (&answered, &item), &e.to_string()).await?,
         }
         busy.insert(item.id.clone());
-        asks::remove(&app.db, answered.ask.id).await?;
     }
     Ok(())
 }
 
-/// Starts the run that takes one answer to the agent, or reports that nobody can take it.
+/// A run that couldn't reach the agent keeps the answer for when it's back; any other failure is
+/// reported and the answer dropped.
+async fn not_started(
+    handle: &AppHandle,
+    settings: &Settings,
+    (answered, item): (&Answered, &WorkItem),
+    detail: &str,
+) -> AppResult<()> {
+    if reach::unreached(detail) {
+        return super::outage::report(handle, settings, detail).await;
+    }
+    let failure = Failure {
+        item_id: &item.id,
+        what: "Answer",
+        detail,
+        run: None,
+    };
+    // An answer that will be tried again stays to go with it.
+    match failed::report(handle, &failure, &settings.turns).await? {
+        failed::Handled::TryingAgain => Ok(()),
+        failed::Handled::HandedBack => {
+            asks::remove(&handle.state::<App>().db, answered.ask.id).await
+        }
+    }
+}
+
+/// Starts the run that takes one answer to the agent.
 async fn deliver_one(
     handle: &AppHandle,
     settings: &Settings,
@@ -64,11 +82,9 @@ async fn deliver_one(
 ) -> AppResult<()> {
     let app = handle.state::<App>();
     let known = known_session(&app, answered, item).await?;
-    let ws = workspace::for_item(settings, item)?;
-    match thread::thread_for(known, ws.as_ref()) {
-        Some(thread) => start(handle, settings, (answered, item), (thread, ws)).await,
-        None => undelivered::report(&app.db, answered, Clock::now(&settings.turns)).await,
-    }
+    let located = workspace::locate(settings, item)?;
+    let thread = thread::thread_for(known, located.as_ref().ok());
+    start(handle, settings, (answered, item), (thread, located)).await
 }
 
 /// Hands the answer to the agent.
@@ -76,34 +92,36 @@ async fn start(
     handle: &AppHandle,
     settings: &Settings,
     (answered, item): (&Answered, &WorkItem),
-    (thread, ws): (Thread, Option<Workspace>),
+    (thread, located): (Thread, Located),
 ) -> AppResult<()> {
     let app = handle.state::<App>();
-    let prompt = prompt_for(&app, answered, item, ws.as_ref())?;
-    let job = Job::new("Answer", item.id.clone(), prompt, thread).in_workspace(ws);
+    let prompt = prompt_for(&app, answered, item, located.as_ref())?;
+    let job = Job::new("Answer", item.id.clone(), prompt, thread)
+        .in_workspace(located.ok())
+        .delivering(answered.ask.id);
     dispatch::run(handle, settings, job).await
 }
 
-/// The session that asked, else the one holding the item.
+/// The session that asked, else the one holding the item, if Claude can resume it.
 async fn known_session(
     app: &App,
     answered: &Answered,
     item: &WorkItem,
 ) -> AppResult<Option<SessionRef>> {
-    if answered.ask.asker.is_some() {
-        return Ok(answered.ask.asker.clone());
+    if let Some(asker) = answered.ask.asker.clone().filter(sessions::exists) {
+        return Ok(Some(asker));
     }
-    watch::session_for(&app.db, &item.id).await
+    super::held::session(&app.db, &item.id).await
 }
 
 fn prompt_for(
     app: &App,
     answered: &Answered,
     item: &WorkItem,
-    ws: Option<&Workspace>,
+    located: Result<&Workspace, &Missing>,
 ) -> AppResult<String> {
     let link = item.link.clone().unwrap_or_default();
-    let place = workspace::describe(&app.config, ws)?;
+    let place = workspace::describe(&app.config, located)?;
     let vars = [
         ("item", item.id.as_str()),
         ("title", item.title.as_str()),

@@ -9,6 +9,17 @@ pub fn home() -> AppResult<PathBuf> {
     dirs::home_dir().ok_or_else(|| AppError::NotFound("the home folder".to_owned()))
 }
 
+/// A path as the user writes it: `~` and `~/…` are the home folder.
+pub fn expand_home(path: &str) -> AppResult<PathBuf> {
+    Ok(match path {
+        "~" => home()?,
+        _ => match path.strip_prefix("~/") {
+            Some(rest) => home()?.join(rest),
+            None => PathBuf::from(path),
+        },
+    })
+}
+
 /// The database lives here: the system's app-data folder, as Tauri uses (on macOS
 /// `~/Library/Application Support/<id>`, on Windows `%APPDATA%\<id>`, on Linux `~/.local/share/<id>`).
 pub fn data_dir() -> AppResult<PathBuf> {

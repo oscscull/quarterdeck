@@ -2,8 +2,10 @@ import { t } from "./copy";
 import { dayClock } from "./time";
 import type { Turn, WorkItem } from "./types";
 
-/** Whose turn an item is, in a few words: "your turn", "waiting on CI". */
-export function turnText(item: Pick<WorkItem, "turn" | "waitingOn">): string {
+/** Whose turn an item is, in a few words: "your turn", "waiting on CI". Empty for done work, which
+ * has no turn; every open item, started or not, has one. */
+export function turnText(item: Pick<WorkItem, "turn" | "waitingOn" | "stage">): string {
+  if (item.stage === "done") return "";
   // An older peer's items carry no turn.
   const turn = item.turn ?? "you";
   if (turn === "others") return t("turn.others", { who: item.waitingOn ?? t("turn.someone") });

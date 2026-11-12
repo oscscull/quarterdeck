@@ -1,15 +1,13 @@
 import type { Priority } from "./types";
 
-/** The line and its context for a priority, worded by kind. */
+/** The line and its context for a priority: the question, or what the user's turn needs. */
 export function describe(p: Priority): { text: string; context: string } {
-  switch (p.kind) {
-    case "ask":
-      return { text: p.ask.question, context: p.ask.context ? `${p.ask.context} · ${p.itemId}` : p.itemId };
-    case "yours":
-    // A peer on an older build may send kinds this one doesn't know; show the item.
-    default:
-      return { text: p.itemTitle, context: `${p.itemLabel} · ${p.itemId}` };
+  if (p.kind === "ask") {
+    return { text: p.ask.question, context: p.ask.context ? `${p.ask.context} · ${p.itemId}` : p.itemId };
   }
+  if (p.kind === "yours" && p.need) return { text: p.need, context: `${p.itemTitle} · ${p.itemId}` };
+  // An older peer may send no need, or kinds this build doesn't know: show the item.
+  return { text: p.itemTitle, context: `${p.itemLabel} · ${p.itemId}` };
 }
 
 /** Stable across refreshes and machines. */

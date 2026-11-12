@@ -4,8 +4,10 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::event::Change;
 use crate::domain::item::{ItemInput, WorkItem};
+use crate::domain::life::{Life, Whose};
 use crate::domain::turn::Turn;
 use crate::error::AppResult;
+use crate::lifecycle;
 use crate::store::{Db, events, items};
 
 /// Saves an item from the UI or an agent and returns its id. Unknown or empty ids create one.
@@ -32,6 +34,7 @@ async fn create(db: &Db, input: ItemInput, now: DateTime<Utc>) -> AppResult<Stri
         opened_at: now,
         state_since: now,
         rank: items::next_rank(db).await?,
+        life: lifecycle::new(input.stage, &input.state_label),
         ..from_input(input)
     };
     items::save(db, &item).await?;
@@ -45,6 +48,11 @@ async fn update(
     input: ItemInput,
     now: DateTime<Utc>,
 ) -> AppResult<String> {
+    let life = if input.stage == old.stage() {
+        old.life.clone()
+    } else {
+        lifecycle::moved(&old.life, input.stage, &input.state_label)
+    };
     let mut item = WorkItem {
         id: old.id.clone(),
         opened_at: old.opened_at,
@@ -52,10 +60,7 @@ async fn update(
         rank: old.rank,
         source: old.source.clone(),
         external_id: old.external_id.clone(),
-        turn: old.turn,
-        turn_until: old.turn_until,
-        waiting_on: old.waiting_on.clone(),
-        then_turn: old.then_turn,
+        life,
         ..from_input(input)
     };
     let changes = diff(old, &item);
@@ -69,18 +74,14 @@ async fn update(
     Ok(item.id)
 }
 
-/// The fields filled from input; ids, times and rank are set by the caller.
+/// The fields filled from input; ids, times, rank and life are set by the caller.
 fn from_input(input: ItemInput) -> WorkItem {
     WorkItem {
         id: String::new(),
         title: input.title,
         state_label: input.state_label,
-        stage: input.stage,
+        life: Life::not_started(),
         status: input.status,
-        turn: Turn::You,
-        turn_until: None,
-        waiting_on: None,
-        then_turn: None,
         area: input.area,
         link: input.link.filter(|l| !l.trim().is_empty()),
         source: items::MANUAL.to_owned(),
@@ -94,8 +95,16 @@ fn from_input(input: ItemInput) -> WorkItem {
 /// Changes worth a line in the history. Title and link edits are housekeeping.
 fn diff(old: &WorkItem, new: &WorkItem) -> Vec<Change> {
     let mut changes = Vec::new();
-    if old.stage != new.stage {
-        changes.push(Change::Stage { stage: new.stage });
+    if old.stage() != new.stage() {
+        changes.push(Change::Stage { stage: new.stage() });
+    }
+    if old.life.whose() != new.life.whose()
+        && let Some(Whose::You { need }) = new.life.whose()
+    {
+        changes.push(Change::Turn {
+            turn: Turn::You,
+            why: need.clone(),
+        });
     }
     if old.status != new.status {
         changes.push(Change::Status { status: new.status });
@@ -149,7 +158,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn records_stage_changes_only_when_they_happen() {
+    async fn records_stage_changes_only_when_they_happen_and_starting_hands_over() {
         let db = Db::in_memory().await;
         let id = save(&db, input("", Stage::UpNext), Utc::now())
             .await
@@ -169,6 +178,10 @@ mod tests {
         assert_eq!(
             history,
             [
+                Change::Turn {
+                    turn: Turn::You,
+                    why: "starting".to_owned()
+                },
                 Change::Stage {
                     stage: Stage::InReview
                 },

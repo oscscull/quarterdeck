@@ -10,6 +10,7 @@
   }
 
   let { events, now }: Props = $props();
+  let open = $state(false);
 
   function describe(change: Change): string {
     switch (change.kind) {
@@ -33,7 +34,10 @@
 
 {#if events.length > 0}
   <section aria-label={t("item.history")}>
-    <h3 class="section-label">{t("item.history")}</h3>
+    <button type="button" class="link toggle" aria-expanded={open} onclick={() => (open = !open)}>
+      {open ? t("item.hideHistory") : t("item.showHistory", { n: events.length })}
+    </button>
+    {#if open}
     <ol>
       {#each events as e (e.id)}
         <li>
@@ -42,16 +46,18 @@
         </li>
       {/each}
     </ol>
+    {/if}
   </section>
 {/if}
 
 <style>
-  h3 {
-    margin-bottom: 6px;
+  .toggle {
+    font-size: 13px;
   }
 
   ol {
-    max-height: 200px;
+    margin-top: 6px;
+    max-height: 320px;
     overflow-y: auto;
   }
 

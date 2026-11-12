@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::claude::sessions;
 use crate::cli;
 use crate::error::AppResult;
 use crate::paths;
@@ -52,15 +53,8 @@ fn move_database(dir: &Path) -> AppResult<()> {
     Ok(())
 }
 
-/// Claude Code keeps a session under its folder's path with every non-alphanumeric character as `-`.
 fn session_folder(home: &Path, dir: &Path) -> PathBuf {
-    let key: String = dir
-        .display()
-        .to_string()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    home.join(".claude/projects").join(key)
+    sessions::folder(&home.join(".claude"), dir)
 }
 
 /// Worktrees moved with the data folder: tell git, and

@@ -26,3 +26,21 @@ pub async fn passed_since(db: &Db, item_id: &str, since: DateTime<Utc>) -> AppRe
         .iter()
         .any(|e| e.at > since && matches!(e.change, Change::Turn { .. })))
 }
+
+/// How many times in a row, newest first, the turn passed with a reason starting `marker`, until an
+/// event `stops` says otherwise. Other events in between are skipped.
+pub async fn streak(
+    db: &Db,
+    item_id: &str,
+    marker: &str,
+    stops: impl Fn(&Change) -> bool,
+) -> AppResult<usize> {
+    let history = events::for_item(db, item_id).await?;
+    let counted = |c: &Change| matches!(c, Change::Turn { why, .. } if why.starts_with(marker));
+    Ok(history
+        .iter()
+        .map(|e| &e.change)
+        .take_while(|c| counted(c) || !stops(c))
+        .filter(|c| counted(c))
+        .count())
+}

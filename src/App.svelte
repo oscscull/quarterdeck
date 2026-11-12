@@ -13,7 +13,6 @@
   import { suggestionKeys, viewLabel } from "./lib/views";
   import Agent from "./views/Agent.svelte";
   import Board from "./views/Board.svelte";
-  import InFlight from "./views/InFlight.svelte";
   import Priorities from "./views/Priorities.svelte";
   import Today from "./views/Today.svelte";
 
@@ -40,15 +39,11 @@
   <Priorities />
 {:else if view === "board"}
   <Board />
-{:else if view === "inflight"}
-  <InFlight />
 {:else}
   <Agent />
 {/if}
 
-{#key view}
-  <ChatBubble page={t(viewLabel(view))} suggestions={suggestionKeys(view).map((key) => t(key))} />
-{/key}
+<ChatBubble page={t(viewLabel(view))} suggestions={suggestionKeys(view).map((key) => t(key))} />
 
 {#if detail.id}
   <ItemDetailModal id={detail.id} node={detail.node} onClose={() => (detail.id = null)} />

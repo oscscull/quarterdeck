@@ -38,6 +38,7 @@
       await route.runSchedule(item.node, id);
       await route.dismissUrgent(item.node, item.id);
     });
+  const retry = () => act(() => route.retryUrgent(item.node, item.id));
   const send = () => message.trim() && act(() => api.resolveUrgent(item.id, message.trim()));
 </script>
 
@@ -54,6 +55,9 @@
     {#if item.scheduleId}
       {@const id = item.scheduleId}
       <button type="button" class="button-primary small" disabled={busy} onclick={() => runNow(id)}>{t("urgent.runNow")}</button>
+    {/if}
+    {#if item.runId}
+      <button type="button" class="button-primary small" disabled={busy} onclick={retry}>{t("urgent.retry")}</button>
     {/if}
     {#if !item.node}
       <!-- Quarterdeck's Claude acts on this machine, so it can only resolve local items. -->

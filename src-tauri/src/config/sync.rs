@@ -27,6 +27,8 @@ pub struct SyncSettings {
     /// Peers must send this. Generated on first start when empty.
     pub token: String,
     pub peers: Vec<Peer>,
+    /// How long a peer may go unreachable before it's raised as urgent.
+    pub down_minutes: i64,
 }
 
 impl Default for SyncSettings {
@@ -37,6 +39,7 @@ impl Default for SyncSettings {
             lan: false,
             token: String::new(),
             peers: Vec::new(),
+            down_minutes: 30,
         }
     }
 }

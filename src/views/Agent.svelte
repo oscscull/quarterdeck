@@ -16,6 +16,7 @@
   import NewScheduleModal from "./agent/NewScheduleModal.svelte";
   import PauseModal from "./agent/PauseModal.svelte";
   import PausedBanner from "./agent/PausedBanner.svelte";
+  import RecentEvents from "./agent/RecentEvents.svelte";
   import ScheduleDetailModal from "./agent/ScheduleDetailModal.svelte";
   import ScheduleList from "./agent/ScheduleList.svelte";
   import { blankSchedule } from "./agent/blank";
@@ -95,6 +96,7 @@
       {#if data.schedules.filter(inArea).length === 0}<p class="hint">{t("empty.agent")}</p>{/if}
       <ScheduleList schedules={data.schedules.filter(inArea)} {now} paused={data.pause !== null} onOpen={(s) => (editing = s)} onToggle={setEnabled} onDelete={(s) => (deleting = s)} />
     </section>
+    <RecentEvents events={data.events ?? []} schedules={data.schedules} {now} />
     <Connections connections={data.connections} {now} />
     <ConnectClaude />
   {/if}
@@ -124,6 +126,7 @@
   <ScheduleDetailModal
     schedule={editing}
     runs={editingView?.runs ?? []}
+    needsApproval={editingView?.needsApproval ?? false}
     {now}
     onClose={() => (editing = null)}
     onSaved={() => { editing = null; void load(); }}

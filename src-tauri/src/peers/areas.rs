@@ -93,6 +93,7 @@ async fn raise_conflict(db: &Db, settings: &Settings, peer: &str, mine: &str) ->
         area: settings.known_area(""),
         raised_at: chrono::Utc::now(),
         schedule_id: None,
+        run_id: None,
     };
     urgent::raise(db, &item).await?;
     meta::set_text(db, &key, mine).await

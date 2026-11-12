@@ -1,16 +1,16 @@
 //! What needs the user, derived from whose turn each item is and ranked by the work. Never ordered
 //! by hand.
 //!
-//! In rank order: questions raised on an item, else the item itself when it's in flight and the
-//! user's turn. Work that is the agent's or others' turn never appears; when their time runs out
-//! the turn comes back here.
+//! In rank order: questions raised on an item, else the item itself when it's the user's turn,
+//! saying what it needs. `attention` decides which items those are.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use crate::attention::{self, Attention};
 use crate::domain::ask::Ask;
-use crate::domain::item::{Stage, WorkItem};
-use crate::domain::turn::Turn;
+use crate::domain::item::WorkItem;
+use crate::domain::life::Whose;
 
 /// Why something is a priority. The UI words each kind from the copy file.
 #[derive(Debug, Clone, Serialize)]
@@ -19,7 +19,7 @@ pub enum Reason {
     /// A question or design fork someone raised on the item.
     Ask { ask: Ask },
     /// It's the user's turn on the item, e.g. a PR to review or merge.
-    Yours,
+    Yours { need: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,8 +49,12 @@ fn priority(item: &WorkItem, reason: Reason) -> Priority {
     }
 }
 
-const fn yours(item: &WorkItem) -> bool {
-    matches!(item.turn, Turn::You) && matches!(item.stage, Stage::InProgress | Stage::InReview)
+/// What the user's turn on the item needs, if it's theirs.
+fn need(item: &WorkItem) -> Option<String> {
+    match item.life.whose()? {
+        Whose::You { need } => Some(need.clone()),
+        Whose::Agent | Whose::Others { .. } | Whose::Later { .. } => None,
+    }
 }
 
 /// Questions on the item, or the item itself when it's the user's turn.
@@ -60,44 +64,36 @@ fn needs_you(item: &WorkItem, asks: &[Ask]) -> Vec<Priority> {
         .filter(|a| a.item_id == item.id)
         .map(|a| priority(item, Reason::Ask { ask: a.clone() }))
         .collect();
-    if mine.is_empty() && yours(item) {
-        return vec![priority(item, Reason::Yours)];
+    if attention::of(item, !mine.is_empty()) != Attention::Today {
+        return Vec::new();
+    }
+    if mine.is_empty() {
+        let need = need(item).unwrap_or_default();
+        return vec![priority(item, Reason::Yours { need })];
     }
     mine
 }
 
 /// Every priority, in order. `items` must already be sorted by rank.
 pub fn priorities(items: &[WorkItem], asks: &[Ask]) -> Vec<Priority> {
-    items
-        .iter()
-        .filter(|i| i.stage != Stage::Done)
-        .flat_map(|i| needs_you(i, asks))
-        .collect()
+    items.iter().flat_map(|i| needs_you(i, asks)).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::life::{Life, Phase};
 
-    fn item(id: &str, turn: Turn, stage: Stage) -> WorkItem {
-        let now = Utc::now();
-        WorkItem {
-            id: id.to_owned(),
-            title: id.to_owned(),
-            state_label: String::new(),
-            stage,
-            status: None,
-            turn,
-            turn_until: None,
-            waiting_on: None,
-            then_turn: None,
-            area: String::new(),
-            link: None,
-            source: String::new(),
-            external_id: None,
-            opened_at: now,
-            state_since: now,
-            rank: 0,
+    fn item(id: &str, whose: Option<Whose>) -> WorkItem {
+        let life = whose.map_or_else(Life::not_started, |w| {
+            Life::open_as(Phase::InReview, w, None)
+        });
+        WorkItem::sample(id, life)
+    }
+
+    fn you(need: &str) -> Whose {
+        Whose::You {
+            need: need.to_owned(),
         }
     }
 
@@ -105,8 +101,6 @@ mod tests {
         Ask {
             id,
             item_id: item_id.to_owned(),
-            question: String::new(),
-            context: String::new(),
             ..Ask::default()
         }
     }
@@ -115,31 +109,42 @@ mod tests {
         list.iter()
             .map(|p| match &p.reason {
                 Reason::Ask { ask } => format!("ask{}", ask.id),
-                Reason::Yours => format!("yours {}", p.item_id),
+                Reason::Yours { need } => format!("{}: {need}", p.item_id),
             })
             .collect()
     }
 
     #[test]
-    fn only_the_users_turns_and_questions_in_rank_order() {
+    fn the_users_turns_and_every_question_in_rank_order() {
+        let others = Whose::Others {
+            waiting_on: "Sam".to_owned(),
+            then: None,
+        };
         let items = [
-            item("reviewing", Turn::Others, Stage::InReview),
-            item("mine", Turn::You, Stage::InReview),
-            item("asked", Turn::Agent, Stage::InProgress),
-            item("working", Turn::Agent, Stage::InProgress),
-            item("someday", Turn::You, Stage::UpNext),
-            item("ready", Turn::You, Stage::InReview),
+            item("reviewing", Some(others)),
+            item("mine", Some(you("Merge it?"))),
+            item("asked", Some(Whose::Agent)),
+            item("working", Some(Whose::Agent)),
+            item("someday", None),
+            item("ready", Some(you("Pick a name"))),
+            WorkItem::sample("shipped", Life::Done),
         ];
-        let asks = [ask(7, "asked")];
+        let asks = [ask(7, "asked"), ask(8, "shipped")];
         assert_eq!(
             kinds(&priorities(&items, &asks)),
-            ["yours mine", "ask7", "yours ready"]
+            [
+                "mine: Merge it?",
+                "ask7",
+                "someday: Not started: start it, park it until it can, or close it",
+                "ready: Pick a name",
+                "ask8"
+            ]
         );
     }
 
     #[test]
     fn a_question_stands_in_for_the_item_itself() {
-        let items = [item("mine", Turn::You, Stage::InReview)];
+        let items = [item("mine", Some(you("Merge?")))];
         assert_eq!(kinds(&priorities(&items, &[ask(1, "mine")])), ["ask1"]);
     }
 }

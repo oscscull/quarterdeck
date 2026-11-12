@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+use super::life::Life;
 use super::turn::Turn;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,6 @@ pub enum Stage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
-    Decision,
     Review,
     /// CI is running.
     Ci,
@@ -37,14 +37,10 @@ pub struct WorkItem {
     pub id: String,
     pub title: String,
     pub state_label: String,
-    pub stage: Stage,
+    /// Its stage, and whose move it is while it's active.
+    #[serde(flatten)]
+    pub life: Life,
     pub status: Option<Status>,
-    /// Whose move it is.
-    pub turn: Turn,
-    /// When the turn runs out.
-    pub turn_until: Option<DateTime<Utc>>,
-    pub waiting_on: Option<String>,
-    pub then_turn: Option<Turn>,
     pub area: String,
     /// Where the work lives: a ticket, PR or doc.
     pub link: Option<String>,
@@ -58,6 +54,20 @@ pub struct WorkItem {
     pub rank: i64,
 }
 
+impl WorkItem {
+    pub const fn stage(&self) -> Stage {
+        self.life.stage()
+    }
+
+    pub const fn turn(&self) -> Option<Turn> {
+        self.life.turn()
+    }
+
+    pub fn is_turn(&self, turn: Turn) -> bool {
+        self.turn() == Some(turn)
+    }
+}
+
 /// The editable parts of an item, as sent from the UI or an agent. An empty `id` creates one.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,4 +79,26 @@ pub struct ItemInput {
     pub status: Option<Status>,
     pub area: String,
     pub link: Option<String>,
+}
+
+#[cfg(test)]
+impl WorkItem {
+    /// An item for tests, with `life` and everything else blank.
+    pub fn sample(id: &str, life: Life) -> Self {
+        let now = Utc::now();
+        Self {
+            id: id.to_owned(),
+            title: id.to_owned(),
+            state_label: String::new(),
+            life,
+            status: None,
+            area: String::new(),
+            link: None,
+            source: String::new(),
+            external_id: None,
+            opened_at: now,
+            state_since: now,
+            rank: 0,
+        }
+    }
 }

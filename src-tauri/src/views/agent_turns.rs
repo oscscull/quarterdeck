@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::config::turns::TurnSettings;
-use crate::domain::item::{Stage, WorkItem};
+use crate::domain::item::WorkItem;
 use crate::domain::turn::Turn;
 use crate::error::AppResult;
 use crate::store::{Db, items};
@@ -34,8 +34,8 @@ pub struct AgentTurn {
     pub until: Option<DateTime<Utc>>,
 }
 
-const fn agents(item: &WorkItem) -> bool {
-    matches!(item.turn, Turn::Agent) && matches!(item.stage, Stage::InProgress | Stage::InReview)
+fn agents(item: &WorkItem) -> bool {
+    item.is_turn(Turn::Agent)
 }
 
 const fn doing(work: Work) -> Doing {
@@ -57,7 +57,7 @@ pub async fn build(db: &Db, limits: &TurnSettings) -> AppResult<Vec<AgentTurn>> 
             title: i.title,
             area: i.area,
             doing,
-            until: i.turn_until,
+            until: i.life.until(),
         });
     }
     Ok(turns)

@@ -6,6 +6,7 @@ use super::super::ctx::Ctx;
 use super::super::tool::{NoArgs, Tool, async_tool};
 use crate::domain::urgent::Urgent;
 use crate::error::AppResult;
+use crate::retry;
 use crate::store::urgent;
 
 pub fn tools() -> Vec<Tool> {
@@ -25,6 +26,12 @@ pub fn tools() -> Vec<Tool> {
             "dismiss_urgent",
             "Clears an urgent item once it's dealt with.",
             dismiss,
+        ),
+        async_tool(
+            "retry_urgent",
+            "Retries the failed agent run an urgent item is about (one with a run_id) and clears it: \
+             the item goes back to the agent, whose next prompt is that run's, asked again.",
+            retry,
         ),
     ]
 }
@@ -52,8 +59,10 @@ async fn raise(ctx: Ctx, args: RaiseArgs) -> AppResult<()> {
         area: ctx.area(&args.area)?,
         raised_at: Utc::now(),
         schedule_id: args.schedule_id,
+        run_id: None,
     };
-    urgent::raise(&ctx.db, &item).await
+    urgent::raise(&ctx.db, &item).await?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -63,4 +72,8 @@ struct IdArgs {
 
 async fn dismiss(ctx: Ctx, args: IdArgs) -> AppResult<()> {
     urgent::dismiss(&ctx.db, args.id).await
+}
+
+async fn retry(ctx: Ctx, args: IdArgs) -> AppResult<()> {
+    retry::request(&ctx.db, args.id, &ctx.settings()?.turns).await
 }

@@ -9,19 +9,20 @@ query done_items(before: timestamp) -> ItemKey[] {
 }
 
 # Inserts or replaces an item by id.
-mutation save_item(id, title, state_label, stage: Stage, status: Status?, turn: Turn,
-                   turn_until: timestamp?, waiting_on: text?, then_turn: Turn?, area,
+mutation save_item(id, title, state_label, stage: Stage, status: Status?, turn: Turn?,
+                   turn_until: timestamp?, need: text?, wake: json?, waiting_on: text?,
+                   then_turn: Turn?, area,
                    link: text?, source, external_id: text?, opened_at: timestamp,
                    state_since: timestamp, rank: int) -> ok {
   create Item {
     id = $id, title = $title, state_label = $state_label, stage = $stage, status = $status,
-    turn = $turn, turn_until = $turn_until, waiting_on = $waiting_on, then_turn = $then_turn,
-    area = $area, link = $link, source = $source, external_id = $external_id,
+    turn = $turn, turn_until = $turn_until, need = $need, wake = $wake, waiting_on = $waiting_on,
+    then_turn = $then_turn, area = $area, link = $link, source = $source, external_id = $external_id,
     opened_at = $opened_at, state_since = $state_since, rank = $rank
   } on conflict (id) update {
     title = $title, state_label = $state_label, stage = $stage, status = $status,
-    turn = $turn, turn_until = $turn_until, waiting_on = $waiting_on, then_turn = $then_turn,
-    area = $area, link = $link, source = $source, external_id = $external_id,
+    turn = $turn, turn_until = $turn_until, need = $need, wake = $wake, waiting_on = $waiting_on,
+    then_turn = $then_turn, area = $area, link = $link, source = $source, external_id = $external_id,
     opened_at = $opened_at, state_since = $state_since, rank = $rank
   };
 }

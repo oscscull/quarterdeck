@@ -3,7 +3,8 @@
 use chrono::{DateTime, Utc};
 
 use crate::config::turns::TurnSettings;
-use crate::domain::item::{Stage, WorkItem};
+use crate::domain::item::WorkItem;
+use crate::domain::life::Whose;
 use crate::domain::turn::Turn;
 
 /// What Quarterdeck knows about the agent's work on an item.
@@ -11,7 +12,7 @@ use crate::domain::turn::Turn;
 pub enum Work {
     /// A run about the item is going.
     Running,
-    /// An answer or message is waiting to go to the agent.
+    /// An answer, message or event is waiting to go to the agent.
     Pending,
     /// A session outside Quarterdeck was heard from lately.
     Elsewhere,
@@ -28,15 +29,32 @@ pub enum Due {
     Prompt,
     /// The user's turn ran out: remind them, and start the clock again.
     Remind,
-    /// The turn ran out: pass it on.
+    /// The turn ran out: pass it on, to the user or the agent.
     PassTo {
         to: Turn,
         why: String,
     },
 }
 
-const fn in_flight(item: &WorkItem) -> bool {
-    matches!(item.stage, Stage::InProgress | Stage::InReview)
+/// Who a wait that ran out goes back to. Only the user or the agent, and the agent's own time runs
+/// out to the user, so every wait ends with the user.
+pub const fn back_to(then: Option<Turn>, default: Turn) -> Turn {
+    match then {
+        Some(Turn::Agent) => Turn::Agent,
+        Some(Turn::You | Turn::Others | Turn::Later) => Turn::You,
+        None => match default {
+            Turn::Agent => Turn::Agent,
+            Turn::You | Turn::Others | Turn::Later => Turn::You,
+        },
+    }
+}
+
+/// Why parked work came back: its note if it has one, which says what to do now.
+pub fn back_from_later(note: Option<&str>) -> String {
+    note.map_or_else(
+        || "back from later: pick it up, put it off again, or close it".to_owned(),
+        |n| format!("back from parking ({n}): start it if it can start now, else park it again"),
+    )
 }
 
 fn agent(work: Work, late: bool) -> Due {
@@ -57,30 +75,29 @@ fn agent(work: Work, late: bool) -> Due {
     }
 }
 
-fn others(item: &WorkItem, limits: &TurnSettings) -> Due {
-    let who = item.waiting_on.as_deref().unwrap_or("others");
-    Due::PassTo {
-        to: item.then_turn.unwrap_or(limits.others_then),
-        why: format!("waited {}h on {who}", limits.others_hours),
-    }
-}
-
+/// What an open item's clock calls for. Done work has no clock.
 pub fn due(item: &WorkItem, work: Work, limits: &TurnSettings, now: DateTime<Utc>) -> Due {
-    if !in_flight(item) {
+    let Some(active) = item.life.open() else {
         return Due::Wait;
-    }
-    let Some(until) = item.turn_until else {
+    };
+    let Some(until) = active.until else {
         return Due::StartClock;
     };
     let late = now >= until;
-    match item.turn {
-        Turn::Agent => agent(work, late),
+    match &active.whose {
+        Whose::Agent => agent(work, late),
         _ if !late => Due::Wait,
-        Turn::You => Due::Remind,
-        Turn::Others => others(item, limits),
-        Turn::Later => Due::PassTo {
-            to: item.then_turn.unwrap_or(Turn::You),
-            why: "its time came".to_owned(),
+        Whose::You { .. } => Due::Remind,
+        Whose::Others { waiting_on, then } => Due::PassTo {
+            to: back_to(*then, limits.others_then),
+            why: format!(
+                "waited a day on {waiting_on}: check whether it's still waiting, and wait again \
+                 or carry on"
+            ),
+        },
+        Whose::Later { then, note, .. } => Due::PassTo {
+            to: back_to(*then, Turn::You),
+            why: back_from_later(note.as_deref()),
         },
     }
 }
@@ -90,26 +107,23 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+    use crate::domain::life::{Life, Phase};
 
-    fn item(turn: Turn, until: Option<i64>) -> WorkItem {
-        let now = Utc::now();
-        WorkItem {
-            id: "a".to_owned(),
-            title: String::new(),
-            state_label: String::new(),
-            stage: Stage::InReview,
-            status: None,
-            turn,
-            turn_until: until.map(|m| now + Duration::minutes(m)),
-            waiting_on: Some("CI".to_owned()),
-            then_turn: None,
-            area: String::new(),
-            link: None,
-            source: String::new(),
-            external_id: None,
-            opened_at: now,
-            state_since: now,
-            rank: 0,
+    fn item(whose: Whose, until: Option<i64>) -> WorkItem {
+        let until = until.map(|m| Utc::now() + Duration::minutes(m));
+        WorkItem::sample("a", Life::open_as(Phase::InReview, whose, until))
+    }
+
+    fn you() -> Whose {
+        Whose::You {
+            need: "Merge?".to_owned(),
+        }
+    }
+
+    fn others(then: Option<Turn>) -> Whose {
+        Whose::Others {
+            waiting_on: "CI".to_owned(),
+            then,
         }
     }
 
@@ -120,47 +134,69 @@ mod tests {
     const IDLE: Work = Work::Idle;
 
     #[test]
-    fn nothing_in_flight_idles_without_a_clock() {
-        assert_eq!(check(&item(Turn::You, None), IDLE), Due::StartClock);
-        let mut later = item(Turn::You, Some(-5));
-        later.stage = Stage::UpNext;
-        assert_eq!(check(&later, IDLE), Due::Wait);
+    fn only_open_work_has_a_clock() {
+        assert_eq!(check(&item(you(), None), IDLE), Due::StartClock);
+        let new = WorkItem::sample("a", Life::not_started());
+        assert_eq!(check(&new, IDLE), Due::StartClock);
+        assert_eq!(check(&WorkItem::sample("a", Life::Done), IDLE), Due::Wait);
     }
 
     #[test]
     fn the_agent_is_prompted_until_its_time_runs_out() {
-        assert_eq!(check(&item(Turn::Agent, Some(60)), IDLE), Due::Prompt);
+        assert_eq!(check(&item(Whose::Agent, Some(60)), IDLE), Due::Prompt);
         let running = Work::Running;
-        assert_eq!(check(&item(Turn::Agent, Some(60)), running), Due::Wait);
+        assert_eq!(check(&item(Whose::Agent, Some(60)), running), Due::Wait);
         assert_eq!(
-            check(&item(Turn::Agent, Some(60)), Work::Elsewhere),
+            check(&item(Whose::Agent, Some(60)), Work::Elsewhere),
             Due::Wait
         );
         assert!(matches!(
-            check(&item(Turn::Agent, Some(-1)), running),
+            check(&item(Whose::Agent, Some(-1)), running),
             Due::PassTo { to: Turn::You, .. }
         ));
     }
 
     #[test]
     fn waits_end_and_the_user_is_reminded() {
-        assert_eq!(check(&item(Turn::You, Some(-1)), IDLE), Due::Remind);
-        assert_eq!(check(&item(Turn::You, Some(60)), IDLE), Due::Wait);
-        assert_eq!(
-            check(&item(Turn::Others, Some(-1)), IDLE),
-            Due::PassTo {
-                to: Turn::You,
-                why: "waited 24h on CI".to_owned()
-            }
-        );
-        let mut to_agent = item(Turn::Others, Some(-1));
-        to_agent.then_turn = Some(Turn::Agent);
+        assert_eq!(check(&item(you(), Some(-1)), IDLE), Due::Remind);
+        assert_eq!(check(&item(you(), Some(60)), IDLE), Due::Wait);
         assert!(matches!(
-            check(&to_agent, IDLE),
+            check(&item(others(None), Some(-1)), IDLE),
+            Due::PassTo { to: Turn::Agent, why } if why.starts_with("waited a day on CI")
+        ));
+        let to_you = TurnSettings {
+            others_then: Turn::You,
+            ..TurnSettings::default()
+        };
+        assert!(matches!(
+            due(&item(others(None), Some(-1)), IDLE, &to_you, Utc::now()),
+            Due::PassTo { to: Turn::You, .. }
+        ));
+        assert!(matches!(
+            check(&item(others(Some(Turn::Agent)), Some(-1)), IDLE),
             Due::PassTo {
                 to: Turn::Agent,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn a_wait_never_hands_on_to_another_wait() {
+        for then in [Some(Turn::Others), Some(Turn::Later)] {
+            assert!(matches!(
+                check(&item(others(then), Some(-1)), IDLE),
+                Due::PassTo { to: Turn::You, .. }
+            ));
+        }
+        let limits = TurnSettings {
+            others_then: Turn::Later,
+            ..TurnSettings::default()
+        };
+        let late = item(others(None), Some(-1));
+        assert!(matches!(
+            due(&late, IDLE, &limits, Utc::now()),
+            Due::PassTo { to: Turn::You, .. }
         ));
     }
 }

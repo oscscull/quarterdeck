@@ -7,9 +7,11 @@ use super::alerts::AlertSettings;
 use super::calendar::CalendarSettings;
 use super::dev::DevSettings;
 use super::github::GithubSettings;
+use super::outage::OutageSettings;
 use super::sync::SyncSettings;
 use super::turns::TurnSettings;
 use super::updates::UpdateSettings;
+use crate::claude::{Program, account};
 use crate::error::{AppError, AppResult};
 use crate::profile;
 
@@ -31,9 +33,16 @@ pub struct Area {
 pub struct Settings {
     pub node: String,
     pub priority_limit: usize,
+    /// How many earlier chat messages go to Claude with each new one.
+    pub chat_history_messages: usize,
     pub claude_command: String,
+    /// The model every headless run is locked to (`--model`). Empty leaves it to Claude Code.
+    pub claude_model: String,
+    /// The account Claude Code's login is saved under (see `Program::user`); empty uses this Mac's.
+    pub claude_user: String,
     pub activity_ttl_days: i64,
     pub run_ttl_days: i64,
+    pub event_ttl_days: i64,
     pub done_todo_ttl_days: i64,
     pub done_item_ttl_days: i64,
     pub areas: Vec<Area>,
@@ -44,6 +53,7 @@ pub struct Settings {
     pub launch_at_login: bool,
     pub sync: SyncSettings,
     pub turns: TurnSettings,
+    pub outage: OutageSettings,
     pub projects: Vec<Project>,
     /// Claude Code's `--permission-mode` for work in a project, e.g. `auto` (Claude decides what's
     /// safe, as in the user's own sessions) or `acceptEdits` (only the project's allow rules).
@@ -58,9 +68,13 @@ impl Default for Settings {
         Self {
             node: "this-mac".to_owned(),
             priority_limit: 3,
+            chat_history_messages: 20,
             claude_command: "claude".to_owned(),
+            claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
+            event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
             areas: Vec::new(),
@@ -70,6 +84,7 @@ impl Default for Settings {
             launch_at_login: true,
             sync: SyncSettings::default(),
             turns: TurnSettings::default(),
+            outage: OutageSettings::default(),
             projects: Vec::new(),
             project_permission_mode: "auto".to_owned(),
             queue: QueueSettings::default(),
@@ -88,15 +103,45 @@ impl Settings {
             .map_or(self.node.as_str(), |a| a.node.as_str())
     }
 
-    /// The command that runs Claude. A dev build runs it only when `[dev] run_claude` is on.
-    pub fn claude(&self) -> AppResult<&str> {
-        if profile::DEV && !self.dev.run_claude {
+    /// Whether this build may run Claude. A dev build runs it only when `[dev] run_claude` is on.
+    pub const fn may_run_claude(&self) -> bool {
+        !profile::DEV || self.dev.run_claude
+    }
+
+    /// How to run Claude, locked to `claude_model` and `claude_user`.
+    pub fn claude(&self) -> AppResult<Program> {
+        if !self.may_run_claude() {
             return Err(AppError::Claude(
                 "this dev build doesn't run Claude; set [dev] run_claude = true in its quarterdeck.toml"
                     .to_owned(),
             ));
         }
-        Ok(&self.claude_command)
+        Ok(Program {
+            command: self.claude_command.clone(),
+            model: self.claude_model.clone(),
+            user: self.claude_user()?,
+        })
+    }
+
+    /// `claude_user`, else this Mac's account name.
+    fn claude_user(&self) -> AppResult<String> {
+        let set = self.claude_user.trim();
+        if set.is_empty() {
+            account::this_macs()
+        } else {
+            Ok(set.to_owned())
+        }
+    }
+
+    /// Whether script schedules may run. A dev build runs them only when `[dev] run_scripts` is on.
+    pub fn scripts(&self) -> AppResult<()> {
+        if profile::DEV && !self.dev.run_scripts {
+            return Err(AppError::BadInput(
+                "this dev build doesn't run scripts; set [dev] run_scripts = true in its quarterdeck.toml"
+                    .to_owned(),
+            ));
+        }
+        Ok(())
     }
 
     /// `area` if it is configured (or none are), otherwise the first area.
@@ -117,6 +162,20 @@ pub fn load(config: &Config) -> AppResult<Settings> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_set_claude_user_wins() {
+        let s = Settings {
+            claude_user: " oscar ".to_owned(),
+            ..settings()
+        };
+        assert_eq!(s.claude_user().ok().as_deref(), Some("oscar"));
+    }
+
+    #[test]
+    fn an_empty_claude_user_is_this_macs_account() {
+        assert_eq!(settings().claude_user().ok(), account::this_macs().ok());
+    }
+
     fn settings() -> Settings {
         let area = |id: &str, node: &str| Area {
             id: id.to_owned(),
@@ -127,9 +186,13 @@ mod tests {
         Settings {
             node: "this-mac".to_owned(),
             priority_limit: 3,
+            chat_history_messages: 20,
             claude_command: String::new(),
+            claude_model: String::new(),
+            claude_user: String::new(),
             activity_ttl_days: 7,
             run_ttl_days: 14,
+            event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
             areas: vec![area("work", "work-mac"), area("life", "home-mac")],
@@ -139,6 +202,7 @@ mod tests {
             launch_at_login: true,
             sync: SyncSettings::default(),
             turns: TurnSettings::default(),
+            outage: OutageSettings::default(),
             projects: Vec::new(),
             project_permission_mode: "auto".to_owned(),
             queue: QueueSettings::default(),

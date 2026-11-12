@@ -11,6 +11,7 @@ use crate::domain::ask::Ask;
 use crate::domain::commitment::Commitment;
 use crate::domain::event::Change;
 use crate::domain::item::{Status, WorkItem};
+use crate::domain::life::{Life, LifeFields};
 use crate::domain::run::Run;
 use crate::domain::session::SessionRef;
 use crate::domain::todo::Todo;
@@ -85,7 +86,7 @@ pub fn legacy_error(e: impl std::fmt::Display) -> AppError {
 /// The old status, without "proceeding", which said whose turn it was.
 fn status(r: &Row<'_>) -> Sql<Option<Status>> {
     let text: Option<String> = r.get(4)?;
-    if text.as_deref() == Some("proceeding") {
+    if matches!(text.as_deref(), Some("proceeding" | "decision")) {
         return Ok(None);
     }
     named(r, 4)
@@ -108,16 +109,22 @@ fn item(r: &Row<'_>) -> Sql<(WorkItem, bool)> {
     let stage = named(r, 3)?.ok_or_else(|| bad(3, std::fmt::Error))?;
     let status = status(r)?;
     let (turn, waiting_on) = turn(status, r.get(5)?);
+    let state_label: String = r.get(2)?;
+    let life = Life::from(LifeFields {
+        stage,
+        turn: Some(turn),
+        turn_until: None,
+        need: Some(state_label.clone()),
+        waiting_on,
+        then_turn: None,
+        wake: Vec::new(),
+    });
     let item = WorkItem {
         id: r.get(0)?,
         title: r.get(1)?,
-        state_label: r.get(2)?,
-        stage,
+        state_label,
+        life,
         status,
-        turn,
-        turn_until: None,
-        waiting_on,
-        then_turn: None,
         area: r.get(6)?,
         link: r.get(7)?,
         source: r.get(8)?,
@@ -199,6 +206,7 @@ fn urgent(r: &Row<'_>) -> Sql<Urgent> {
         area: r.get(2)?,
         raised_at: at(r, 3)?,
         schedule_id: r.get(4)?,
+        run_id: None,
     })
 }
 
@@ -212,6 +220,7 @@ fn todo(r: &Row<'_>) -> Sql<Todo> {
         title: r.get(0)?,
         area: r.get(1)?,
         due,
+        link: None,
         done_at: at_opt(r, 3)?,
     })
 }

@@ -6,6 +6,7 @@ use crate::claude;
 use crate::config::prompts::{Prompt, render};
 use crate::domain::activity::Activity;
 use crate::error::AppResult;
+use crate::retry;
 use crate::store::{activity, urgent};
 
 #[tauri::command]
@@ -16,6 +17,12 @@ pub async fn dismiss_urgent(app: State<'_, App>, id: i64) -> AppResult<()> {
 #[tauri::command]
 pub async fn dismiss_all_urgent(app: State<'_, App>) -> AppResult<()> {
     urgent::dismiss_all(&app.db).await
+}
+
+/// Asks the card's failed run again on the next tick.
+#[tauri::command]
+pub async fn retry_urgent(app: State<'_, App>, id: i64) -> AppResult<()> {
+    retry::request(&app.db, id, &app.settings()?.turns).await
 }
 
 /// Hands an urgent item to Claude with the user's instructions. Claude's one-line reply becomes an
@@ -30,7 +37,7 @@ pub async fn resolve_urgent(app: State<'_, App>, id: i64, message: String) -> Ap
         ("message", message.as_str()),
     ];
     let prompt = render(&app.config, Prompt::ResolveUrgent, &vars)?;
-    let reply = claude::ask(settings.claude()?, &prompt).await?;
+    let reply = claude::ask(&settings.claude()?, &prompt).await?;
     let note = Activity {
         id: 0,
         text: reply.clone(),

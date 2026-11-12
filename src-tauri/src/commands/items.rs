@@ -7,8 +7,11 @@ use crate::app::App;
 use crate::domain::ask::Ask;
 use crate::domain::event::ItemEvent;
 use crate::domain::item::{ItemInput, WorkItem};
+use crate::domain::turn::Turn;
 use crate::error::AppResult;
+use crate::park::{self, Parking};
 use crate::store::{asks, events, items};
+use crate::turns::Clock;
 use crate::work;
 
 /// Saves a new priority order; `ids` is every item, most important first.
@@ -27,6 +30,50 @@ pub async fn save_item(app: State<'_, App>, mut item: ItemInput) -> AppResult<St
 #[tauri::command]
 pub async fn delete_item(app: State<'_, App>, id: String) -> AppResult<()> {
     items::delete(&app.db, &id).await
+}
+
+/// When parked work comes back, why, and who picks it up.
+#[derive(Debug, serde::Deserialize)]
+pub struct ParkRequest {
+    /// RFC 3339. Unset, it waits for what `why` says, which the agent checks.
+    until: Option<String>,
+    why: Option<String>,
+    /// The user (unset) or the agent.
+    then: Option<Turn>,
+}
+
+/// Parks work until the time asked, or until what `why` says happens, with the user's reason.
+#[tauri::command]
+pub async fn park_item(app: State<'_, App>, id: String, park: ParkRequest) -> AppResult<()> {
+    let ParkRequest { until, why, then } = park;
+    let until = until
+        .map(|u| {
+            chrono::DateTime::parse_from_rfc3339(&u)
+                .map(|t| t.with_timezone(&Utc))
+                .map_err(|e| crate::error::AppError::BadInput(format!("'{u}' is not a time: {e}")))
+        })
+        .transpose()?;
+    let parking = Parking {
+        until,
+        wake: Vec::new(),
+        why,
+        then,
+    };
+    let limits = app.settings()?.turns;
+    park::park(&app.db, &id, parking, Clock::now(&limits)).await
+}
+
+/// Brings parked work back to the user now.
+#[tauri::command]
+pub async fn unpark_item(app: State<'_, App>, id: String) -> AppResult<()> {
+    let limits = app.settings()?.turns;
+    park::unpark(&app.db, &id, Clock::now(&limits)).await
+}
+
+/// Parked items, for the board's parked list.
+#[tauri::command]
+pub async fn parked_items(app: State<'_, App>) -> AppResult<Vec<WorkItem>> {
+    park::list(&app.db).await
 }
 
 /// What the user does about something that needs them.

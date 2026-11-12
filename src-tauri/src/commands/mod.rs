@@ -15,6 +15,7 @@ pub mod chat;
 pub mod commitments;
 pub mod connect;
 pub mod items;
+pub mod outage;
 pub mod peers;
 pub mod runs;
 pub mod schedules;
@@ -59,16 +60,23 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         items::delete_item,
         items::respond,
         items::item_detail,
+        items::park_item,
+        items::unpark_item,
+        items::parked_items,
         schedules::set_schedule_enabled,
         schedules::save_schedule,
         schedules::delete_schedule,
         schedules::explain_cron,
+        schedules::event_kinds,
+        schedules::approve_script,
         schedules::run_schedule_now,
         schedules::pause_all,
         schedules::resume_all,
+        outage::check_agent,
         urgent::dismiss_urgent,
         urgent::dismiss_all_urgent,
         urgent::resolve_urgent,
+        urgent::retry_urgent,
         chat::ask_claude,
         chat::draft_schedule,
     ]

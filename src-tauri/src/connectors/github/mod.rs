@@ -1,12 +1,16 @@
-//! GitHub: the user's open PRs become items, and changes on them fire event schedules.
+//! GitHub: the user's open PRs become items, and changes on them fire events.
 
 mod adopt;
 mod apply;
 mod checks;
 mod fate;
 mod fetch;
+pub mod issues;
+pub mod link;
+mod linked;
 mod snapshot;
 mod turn;
+mod update;
 
 use std::collections::HashSet;
 
@@ -17,28 +21,23 @@ use crate::app::App;
 use crate::config::github::GithubSettings;
 use crate::config::settings::Settings;
 use crate::config::turns::TurnSettings;
+use crate::connectors::status;
+use crate::domain::fired::Fired;
 use crate::domain::schedule::EventKind;
 use crate::error::AppResult;
-use crate::store::{Db, items};
+use crate::store::{Db, fired, items};
 
 pub use adopt::{OpenedPr, adopt};
 pub use apply::SOURCE;
-
-/// One event on one PR, for starting event schedules.
-#[derive(Debug, Clone)]
-pub struct Fired {
-    pub kind: EventKind,
-    pub item_id: String,
-    pub item_area: String,
-    /// Told to the run, e.g. "new review comments on me/app#7 (https://…)".
-    pub trigger: String,
-}
+pub use update::update_branch;
 
 fn describe(kind: EventKind, ext: &str, url: &str) -> String {
     let what = match kind {
         EventKind::PrNewComments => "new review comments",
         EventKind::CiFailed => "CI failing",
         EventKind::CiPassed => "CI passed",
+        EventKind::PrBehind => "behind its base branch",
+        EventKind::PrConflicts => "conflicts with its base branch",
     };
     format!("{what} on {ext} ({url})")
 }
@@ -67,32 +66,34 @@ fn with_checks(pr: &fetch::Pr, informational: &[String]) -> fetch::Pr {
     }
 }
 
-/// Pulls open PRs into items and returns the events they fired.
-pub async fn sync(handle: &AppHandle) -> AppResult<Vec<Fired>> {
+/// Pulls open PRs into items, firing an event for each change worth reacting to.
+pub async fn sync(handle: &AppHandle) -> AppResult<()> {
     let app = handle.state::<App>();
     let all = app.settings()?;
     let prs = fetch::open_prs().await?;
+    // Before the PRs, so one an item already links to doesn't get a second item.
+    linked::bind(&app.db, &all).await?;
     let now = Utc::now();
-    let mut fired = Vec::new();
     let mut open = HashSet::new();
     for pr in prs.iter().filter(|p| !all.github.ignores(&p.repo)) {
         // Open on GitHub whichever machine syncs it, so it must never be closed here.
         open.insert(apply::external_id(pr));
         if let Some(area) = synced_here(&app.db, &all, pr).await? {
-            fired.extend(
-                sync_pr(
-                    &app.db,
-                    &prepared(pr, &all.github),
-                    (&area, &all.turns),
-                    now,
-                )
-                .await?,
-            );
+            let pr = prepared(pr, &all.github);
+            sync_pr(&app.db, &pr, (&area, &all.turns, &all.github), now).await?;
         }
     }
     let unseen = apply::unseen(&app.db, &open).await?;
     close_ended(&app.db, &unseen).await?;
-    Ok(fired)
+    sync_issues(&app.db, &all, &prs).await
+}
+
+/// Syncs issues after PRs, recording how it went on its own, so a failure there never costs the
+/// PRs' events.
+async fn sync_issues(db: &Db, all: &Settings, prs: &[fetch::Pr]) -> AppResult<()> {
+    let result = issues::sync(db, all, prs).await;
+    let error = result.err().map(|e| e.to_string());
+    status::record(db, issues::SOURCE, error.as_deref()).await
 }
 
 /// Asks GitHub what happened to each PR the search didn't return, and closes the merged or
@@ -123,28 +124,27 @@ fn prepared(pr: &fetch::Pr, settings: &GithubSettings) -> fetch::Pr {
     with_checks(&pr, &settings.informational(&pr.repo))
 }
 
-/// Brings one PR's item up to date and returns the events it fired.
+/// Brings one PR's item up to date and fires its events.
 async fn sync_pr(
     db: &Db,
     pr: &fetch::Pr,
-    (area, limits): (&str, &TurnSettings),
+    (area, limits, github): (&str, &TurnSettings, &GithubSettings),
     now: DateTime<Utc>,
-) -> AppResult<Vec<Fired>> {
+) -> AppResult<()> {
     let ext = apply::external_id(pr);
-    let kinds = apply::apply(db, pr, (area, limits), now).await?;
+    let kinds = apply::apply(db, pr, (area, limits, github), now).await?;
     let item_id = items::by_external(db, SOURCE, &ext)
         .await?
         .map(|i| i.id)
         .unwrap_or_default();
-    Ok(kinds
-        .into_iter()
-        .map(|kind| Fired {
-            kind,
-            item_id: item_id.clone(),
-            item_area: area.to_owned(),
-            trigger: describe(kind, &ext, &pr.url),
-        })
-        .collect())
+    for kind in kinds {
+        let event = Fired::new(kind.name(), area, &item_id, describe(kind, &ext, &pr.url))
+            .with("item", &item_id)
+            .with("pr", &ext)
+            .with("url", &pr.url);
+        fired::emit(db, &event).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -188,6 +188,8 @@ mod tests {
             comments: 0,
             reviewers: fetch::Reviewers::Requested,
             reviewer_names: Vec::new(),
+            closes: Vec::new(),
+            base: fetch::Base::Current,
         }
     }
 
@@ -201,7 +203,11 @@ mod tests {
         apply::apply(
             &db,
             &pr(2),
-            ("projects", &TurnSettings::default()),
+            (
+                "projects",
+                &TurnSettings::default(),
+                &GithubSettings::default(),
+            ),
             Utc::now(),
         )
         .await

@@ -50,6 +50,7 @@ table item sort=(rank asc)
   column id text not_null
   column link text null
   column opened_at timestamp not_null
+  column parked bool not_null default=false
   column rank int not_null
   column source text not_null default="manual"
   column stage enum(up_next,in_progress,in_review,done) not_null
@@ -61,7 +62,7 @@ table item sort=(rank asc)
   column turn enum(you,agent,others,later) not_null default="you"
   column turn_until timestamp null
   column waiting_on text null
-  index idx_item_hidden_rank (hidden, rank)
+  index idx_item_hidden_parked_rank (hidden, parked, rank)
   index idx_item_stage_state_since (stage, state_since)
   index uq_item_source_external_id (source, external_id) unique
 
@@ -82,6 +83,7 @@ table run
   column id serial not_null
   column node text not_null
   column outcome enum(ok,failed,missed) null
+  column prompt text null
   column schedule_id text null
   column started_at timestamp not_null
   column summary text null
@@ -113,6 +115,7 @@ table urgent sort=(raised_at desc, id desc)
   column detail text not_null
   column id serial not_null
   column raised_at timestamp not_null
+  column run_id int null
   column schedule_id text null
   column title text not_null
 
