@@ -10,6 +10,7 @@
 
 pub mod alerts;
 pub mod areas;
+pub mod briefing;
 pub mod calendars;
 pub mod chat;
 pub mod commitments;
@@ -44,6 +45,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         calendars::add_mac_calendar,
         calendars::remove_calendar,
         screens::today,
+        briefing::briefing,
+        briefing::correct_briefing,
         commitments::add_commitment,
         commitments::delete_commitment,
         commitments::hide_commitment,

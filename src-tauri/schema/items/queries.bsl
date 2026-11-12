@@ -1,5 +1,7 @@
 query items() -> ItemRow[] { list Item where (hidden = false); }
 query item(id) -> ItemRow;
+# Which project each grouped item belongs to.
+query item_projects() -> ItemProject[] { list Item where (project != null); }
 query item_by_external(source, external_id: text) -> ItemRow;
 query items_from_source(source) -> ItemRow[];
 query top_rank() -> TopRank { get Item; }
@@ -27,11 +29,17 @@ mutation save_item(id, title, state_label, stage: Stage, status: Status?, turn: 
   };
 }
 mutation set_rank(id, rank: int) -> ok { update Item where (id = $id) { rank = $rank }; }
+mutation set_item_project(id, project: Project?) -> ok {
+  update Item where (id = $id) { project = $project };
+}
 mutation hide_item(id) -> ok { update Item where (id = $id) { hidden = true }; }
 # Asks, history and watch go with the item.
 mutation delete_item(id) -> ok { delete Item where (id = $id); }
 
 query item_events(item: Item) -> EventRow[];
-mutation record_event(item: Item, at: timestamp, change: json) -> ok {
-  create ItemEvent { item = $item, at = $at, change = $change };
+mutation record_event(item: Item, at: timestamp, change: json, trace: bool) -> ok {
+  create ItemEvent { item = $item, at = $at, change = $change, trace = $trace };
+}
+mutation expire_trace(before: timestamp) -> ok {
+  delete ItemEvent where (trace = true and at < $before);
 }

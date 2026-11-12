@@ -6,6 +6,7 @@
 
 mod approve;
 mod asks;
+mod briefing;
 mod commitments;
 mod events;
 mod hello;
@@ -14,6 +15,8 @@ mod outage;
 mod overview;
 mod projects;
 mod queue;
+mod references;
+mod repos;
 mod runs;
 mod schedules;
 mod setting;
@@ -32,7 +35,11 @@ use crate::error::{AppError, AppResult};
 
 /// Tools only peers get: the user's own app on another machine, never an agent.
 pub fn peer_only() -> Vec<Tool> {
-    approve::tools().into_iter().chain(hello::tools()).collect()
+    approve::tools()
+        .into_iter()
+        .chain(hello::tools())
+        .chain(briefing::peer_tools())
+        .collect()
 }
 
 pub fn all() -> Vec<Tool> {
@@ -53,7 +60,10 @@ pub fn all() -> Vec<Tool> {
         sync::tools(),
         watch::tools(),
         turns::tools(),
+        repos::tools(),
         projects::tools(),
+        references::tools(),
+        briefing::tools(),
         queue::tools(),
     ]
     .into_iter()

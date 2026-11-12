@@ -10,18 +10,21 @@ use crate::config::sync::Peer;
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT_SECS: &str = "10";
+/// Tools that run Claude on the peer, so take minutes rather than seconds.
+const SLOW_TOOLS: [&str; 1] = ["correct_briefing"];
+const SLOW_TIMEOUT_SECS: &str = "300";
 
 fn url(peer: &Peer, path: &str) -> String {
     format!("{}/v1/{path}", peer.url.trim_end_matches('/'))
 }
 
-fn request(peer: &Peer, path: &str, body: Option<&Value>) -> AppResult<Value> {
+fn request(peer: &Peer, path: &str, body: Option<&Value>, timeout: &str) -> AppResult<Value> {
     let auth = format!("Authorization: Bearer {}", peer.token);
     let mut cmd = Command::new(cli::resolve("curl"));
     cmd.args([
         "-sS",
         "--max-time",
-        TIMEOUT_SECS,
+        timeout,
         "-H",
         &auth,
         "-H",
@@ -57,10 +60,15 @@ fn request(peer: &Peer, path: &str, body: Option<&Value>) -> AppResult<Value> {
 
 /// Runs one Quarterdeck tool on the peer and returns its result.
 pub fn call(peer: &Peer, tool: &str, args: &Value) -> AppResult<Value> {
-    request(peer, &format!("tools/{tool}"), Some(args))
+    let timeout = if SLOW_TOOLS.contains(&tool) {
+        SLOW_TIMEOUT_SECS
+    } else {
+        TIMEOUT_SECS
+    };
+    request(peer, &format!("tools/{tool}"), Some(args), timeout)
 }
 
 /// The peer's machine name, if it answers.
 pub fn health(peer: &Peer) -> AppResult<Value> {
-    request(peer, "health", None)
+    request(peer, "health", None, TIMEOUT_SECS)
 }

@@ -24,8 +24,8 @@ pub use target::Kind;
 pub use uncommitted::uncommitted;
 
 use crate::config::Config;
-use crate::config::projects;
 use crate::config::prompts::{Prompt, render};
+use crate::config::repos;
 use crate::config::settings::Settings;
 use crate::domain::item::WorkItem;
 use crate::domain::session::SessionRef;
@@ -92,7 +92,7 @@ pub fn locate(settings: &Settings, item: &WorkItem) -> AppResult<Located> {
         Ok(t) => t,
         Err(missing) => return Ok(Err(missing)),
     };
-    let Some(project) = projects::find(&settings.projects, &t.repo) else {
+    let Some(project) = repos::find(&settings.repos, &t.repo) else {
         return Ok(Err(Missing::NoProject(t.repo)));
     };
     Ok(Ok(Workspace {
@@ -135,7 +135,7 @@ pub fn describe(config: &Config, located: Result<&Workspace, &Missing>) -> AppRe
 mod tests {
     use super::*;
 
-    use crate::config::projects::Project;
+    use crate::config::repos::Checkout;
 
     #[test]
     fn folders_are_safe_names() {
@@ -161,7 +161,7 @@ mod tests {
 
     fn settings() -> Settings {
         Settings {
-            projects: vec![Project {
+            repos: vec![Checkout {
                 repo: "OscScull/BasedDSL".to_owned(),
                 path: "/code/baseddsl".to_owned(),
                 clean_after_run: Vec::new(),

@@ -40,6 +40,8 @@ event_ttl_days = 3
 done_todo_ttl_days = 1
 # Done work items, with their history, are deleted this long after they finish.
 done_item_ttl_days = 30
+# Bookkeeping in an item's history (stage, turn and label changes), as opposed to its record.
+trace_ttl_days = 14
 
 # Areas of your life Quarterdeck keeps apart. Everything belongs to one. Rename, recolour or add more.
 # `node` is the machine that runs that area's schedules.
@@ -98,10 +100,18 @@ fix_conflicts = true
 # on your answers), or on items linking their issues, runs there, in a worktree per item, with the
 # project's own Claude settings. clean_after_run lists folders (relative to the repo root) deleted from
 # the worktree after every run, such as build output, so idle worktrees don't hold gigabytes.
-# [[projects]]
+# [[repos]]
 # repo = "me/webapp"
 # path = "~/code/webapp"
 # clean_after_run = ["target"]
+
+# The Briefing tab: a plain account of the work, rewritten by prompts/briefing.md when an area's work
+# changes and then holds still for debounce_minutes. Finished work stays in "Just done" for
+# just_done_days; a reference nothing open uses is deleted after reference_ttl_days.
+[briefing]
+debounce_minutes = 10
+just_done_days = 2
+reference_ttl_days = 14
 
 # Items Claude works on one at a time, in this order (set_queue). The first not yet in review or done
 # starts when it's up next (prompts/queue.md, delivered like "Tell Claude"); the next waits until it's

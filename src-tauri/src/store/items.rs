@@ -176,3 +176,24 @@ pub async fn hide(db: &Db, id: &str) -> AppResult<()> {
     let input = client::HideItemInput { id: text_key(id) };
     Ok(db.api().hide_item(input, ()).await?)
 }
+
+/// The project each grouped item belongs to, by item id.
+pub async fn projects(db: &Db) -> AppResult<std::collections::HashMap<String, String>> {
+    let rows = db
+        .api()
+        .item_projects(client::ItemProjectsInput {}, ())
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.id.into_raw(), r.project_id.into_raw()))
+        .collect())
+}
+
+/// Puts an item in a project, or takes it out with `None`.
+pub async fn set_project(db: &Db, id: &str, project: Option<&str>) -> AppResult<()> {
+    let input = client::SetItemProjectInput {
+        id: text_key(id),
+        project: project.map(text_key),
+    };
+    Ok(db.api().set_item_project(input, ()).await?)
+}

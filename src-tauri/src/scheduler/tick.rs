@@ -101,9 +101,18 @@ async fn the_rest(handle: &AppHandle, settings: &Settings, agent: Agent) -> AppR
         return Ok(());
     }
     if up {
-        super::queue::advance(handle, settings).await?;
+        agent_work(handle, settings).await?;
     }
     start_due(handle, settings, Window { last, now }).await
+}
+
+/// Work Quarterdeck starts on its own while the agent is up: the queue, and briefing rewrites.
+async fn agent_work(handle: &AppHandle, settings: &Settings) -> AppResult<()> {
+    super::queue::advance(handle, settings).await?;
+    if settings.may_run_claude() {
+        crate::briefing::due::check(handle, settings).await?;
+    }
+    Ok(())
 }
 
 /// Starts the schedules run here whose crons came due in `w`.

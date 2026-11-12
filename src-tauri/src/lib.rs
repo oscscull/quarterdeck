@@ -4,6 +4,7 @@ mod alerts;
 mod answer;
 mod app;
 mod attention;
+mod briefing;
 mod claude;
 mod cli;
 mod commands;

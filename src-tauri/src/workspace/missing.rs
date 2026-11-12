@@ -7,7 +7,7 @@ pub enum Missing {
     NoLink,
     /// A link, but not to a GitHub repo, issue or PR.
     NotRepo,
-    /// `owner/repo` has no `[[projects]]` checkout here.
+    /// `owner/repo` has no `[[repos]]` checkout here.
     NoProject(String),
 }
 

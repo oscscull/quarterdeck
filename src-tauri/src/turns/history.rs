@@ -15,7 +15,8 @@ pub async fn last_why(db: &Db, item_id: &str) -> AppResult<Option<String>> {
         | Change::Stage { .. }
         | Change::Status { .. }
         | Change::Label { .. }
-        | Change::Note { .. } => None,
+        | Change::Note { .. }
+        | Change::Record { .. } => None,
     }))
 }
 

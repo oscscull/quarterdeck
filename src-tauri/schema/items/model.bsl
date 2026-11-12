@@ -37,6 +37,8 @@ Item {
   opened_at:   timestamp
   state_since: timestamp
   rank:        int
+  # The project it belongs to, if any. Deleting the project ungroups its items.
+  project:     Project? @fk("items outlive their project", on_delete: set_null)
   @index(source, external_id) unique
   @index(hidden, rank)
   @index(stage, state_since)
@@ -46,6 +48,7 @@ shape ItemRow from Item {
   id, title, state_label, stage, status, turn, turn_until, need, wake, waiting_on, then_turn,
   area, link, source, external_id, opened_at, state_since, rank
 }
+shape ItemProject from Item { id, project_id = project.id }
 shape ItemKey from Item { id }
 shape TopRank from Item { top = max(rank) }
 shape ItemCount from Item { n = count() }
@@ -57,6 +60,10 @@ ItemEvent {
   item:   Item @fk("history goes with its item", on_delete: cascade)
   at:     timestamp
   change: json
+  # Machine bookkeeping (stage, turn, label...) rather than a record written for people. Pruned
+  # after `trace_ttl_days`.
+  trace:  bool (default false)
   @index(item, at)
+  @index(trace, at)
 }
-shape EventRow from ItemEvent { id, item_id = item.id, at, change }
+shape EventRow from ItemEvent { id, item_id = item.id, at, change, trace }
