@@ -41,7 +41,10 @@ impl App {
             events: Duration::days(settings.event_ttl_days),
             done_todos: Duration::days(settings.done_todo_ttl_days),
             done_items: Duration::days(settings.done_item_ttl_days),
+            trace: Duration::days(settings.trace_ttl_days),
         };
-        expire(&self.db, Utc::now(), ttl).await
+        let now = Utc::now();
+        expire(&self.db, now, ttl).await?;
+        crate::briefing::prune::prune(&self.db, settings, now).await
     }
 }

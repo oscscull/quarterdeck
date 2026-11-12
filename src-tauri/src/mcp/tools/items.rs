@@ -5,7 +5,7 @@ use serde::Deserialize;
 use super::super::ctx::Ctx;
 use super::super::tool::{Tool, async_tool};
 use super::{in_area, time};
-use crate::domain::event::Change;
+use crate::domain::event::{Change, RecordTag};
 use crate::domain::item::{ItemInput, Stage, Status, WorkItem};
 use crate::domain::trigger::OnEvent;
 use crate::domain::turn::Turn;
@@ -24,7 +24,7 @@ const CREATE_ITEM: &str = "Adds a work item to the bottom of the priorities. Use
              something that doesn't exist yet, or must wait for a date), park_item it saying why. \
              Never leave work that can start sitting, and never park work only because it isn't \
              due yet. Returns the item's id.";
-const UPDATE_ITEM: &str = "Changes an item. Only the fields you pass change. Keep `state_label` short and current, \
+const UPDATE_ITEM: &str = "Changes an item. Only the fields you pass change. `project` puts it in a project (\"\" takes it out). Keep `state_label` short and current, \
              e.g. \"waiting on review from Sam\". Set `status` to what it's waiting on, or \
              `clear_status` when it's moving again. Whose turn it is changes only through \
              pass_turn, and moving it between stages keeps its turn.";
@@ -41,8 +41,14 @@ const PARK_ITEM: &str = "Parks work, started or not, that can't start or go on y
              again. It leaves Today for the Parked list (with a countdown) meanwhile. Nothing parks \
              for good: close work nobody will pick up (update_item stage done). `parked: false` \
              brings it back now.";
-const ADD_NOTE: &str = "Adds a line to an item's history, e.g. \"opened PR #821\". Use for progress worth \
-             remembering; the user sees it in the item's history.";
+const ADD_RECORD: &str = "Adds a record to an item: one plain sentence a person will read later, about \
+             something that mattered. `tag`: why (why the work exists: the problem or need), change (a \
+             change of direction), blocked (blocked or unblocked by something outside), correction (the \
+             user corrected the picture), decision (the user decided something) or delivered (what the \
+             finished work changed for the user). Explain the situation: what was wrong or needed and \
+             what changed, never a vague verdict like \"improved things\". No routine progress, commit \
+             hashes or test counts: stage, turn and label changes are kept as trace already. The Briefing \
+             is written from these.";
 
 pub fn tools() -> Vec<Tool> {
     vec![
@@ -53,7 +59,7 @@ pub fn tools() -> Vec<Tool> {
         async_tool("delete_item", DELETE_ITEM, delete),
         async_tool("move_item", MOVE_ITEM, move_to),
         async_tool("park_item", PARK_ITEM, park),
-        async_tool("add_note", ADD_NOTE, note),
+        async_tool("add_record", ADD_RECORD, record),
     ]
 }
 
@@ -69,6 +75,8 @@ struct ListArgs {
     /// List the parked items instead. Defaults to false.
     #[serde(default)]
     parked: bool,
+    /// Only items in this project, by id.
+    project: Option<String>,
 }
 
 async fn list(ctx: Ctx, args: ListArgs) -> AppResult<Vec<WorkItem>> {
@@ -77,10 +85,15 @@ async fn list(ctx: Ctx, args: ListArgs) -> AppResult<Vec<WorkItem>> {
     } else {
         items::list(&ctx.db).await?
     };
+    let membership = items::projects(&ctx.db).await?;
     all.retain(|i| {
         in_area(args.area.as_ref(), &i.area)
             && args.stage.is_none_or(|s| s == i.stage())
             && (args.include_done || i.stage() != Stage::Done)
+            && args
+                .project
+                .as_ref()
+                .is_none_or(|p| membership.get(&i.id) == Some(p))
     });
     Ok(all)
 }
@@ -93,6 +106,7 @@ struct IdArgs {
 async fn get(ctx: Ctx, args: IdArgs) -> AppResult<serde_json::Value> {
     Ok(serde_json::json!({
         "item": items::get(&ctx.db, &args.id).await?,
+        "project": items::projects(&ctx.db).await?.remove(&args.id),
         "asks": asks::for_item(&ctx.db, &args.id).await?,
         "history": events::for_item(&ctx.db, &args.id).await?,
     }))
@@ -112,6 +126,8 @@ struct CreateArgs {
     state_label: Option<String>,
     /// URL of the ticket, PR or doc.
     link: Option<String>,
+    /// The project it belongs to, by id.
+    project: Option<String>,
 }
 
 async fn create(ctx: Ctx, args: CreateArgs) -> AppResult<String> {
@@ -124,7 +140,11 @@ async fn create(ctx: Ctx, args: CreateArgs) -> AppResult<String> {
         area: ctx.area(&args.area)?,
         link: args.link,
     };
-    work::save(&ctx.db, input, Utc::now()).await
+    let id = work::save(&ctx.db, input, Utc::now()).await?;
+    if let Some(project) = args.project {
+        super::projects::assign(&ctx, &id, &project).await?;
+    }
+    Ok(id)
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -139,6 +159,8 @@ struct UpdateArgs {
     clear_status: bool,
     state_label: Option<String>,
     link: Option<String>,
+    /// The project it belongs to, by id; "" takes it out of its project.
+    project: Option<String>,
 }
 
 async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<String> {
@@ -158,7 +180,11 @@ async fn update(ctx: Ctx, args: UpdateArgs) -> AppResult<String> {
         area: area.unwrap_or(old.area),
         link: args.link.or(old.link),
     };
-    work::save(&ctx.db, input, Utc::now()).await
+    let id = work::save(&ctx.db, input, Utc::now()).await?;
+    if let Some(project) = args.project {
+        super::projects::assign(&ctx, &id, &project).await?;
+    }
+    Ok(id)
 }
 
 async fn delete(ctx: Ctx, args: IdArgs) -> AppResult<()> {
@@ -226,18 +252,18 @@ async fn park(ctx: Ctx, args: ParkArgs) -> AppResult<()> {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-struct NoteArgs {
+struct RecordArgs {
     item_id: String,
+    tag: RecordTag,
+    /// One plain sentence.
     text: String,
 }
 
-async fn note(ctx: Ctx, args: NoteArgs) -> AppResult<()> {
+async fn record(ctx: Ctx, args: RecordArgs) -> AppResult<()> {
     items::get(&ctx.db, &args.item_id).await?;
-    events::record(
-        &ctx.db,
-        &args.item_id,
-        Utc::now(),
-        &Change::Note { text: args.text },
-    )
-    .await
+    let change = Change::Record {
+        tag: args.tag,
+        text: args.text,
+    };
+    events::record(&ctx.db, &args.item_id, Utc::now(), &change).await
 }

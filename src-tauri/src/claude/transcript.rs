@@ -3,7 +3,7 @@
 use serde::Deserialize;
 
 /// One earlier message in the chat, with the view it was sent from.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ChatLine {
     /// `you` or `claude`.
     pub from: String,

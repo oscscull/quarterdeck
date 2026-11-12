@@ -8,6 +8,8 @@ pub mod fired;
 pub mod item;
 pub mod life;
 pub mod outage;
+pub mod project;
+pub mod reference;
 pub mod run;
 pub mod schedule;
 pub mod script;

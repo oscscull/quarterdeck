@@ -13,6 +13,7 @@
   import { suggestionKeys, viewLabel } from "./lib/views";
   import Agent from "./views/Agent.svelte";
   import Board from "./views/Board.svelte";
+  import Briefing from "./views/Briefing.svelte";
   import Priorities from "./views/Priorities.svelte";
   import Today from "./views/Today.svelte";
 
@@ -35,6 +36,8 @@
 
 {#if view === "today"}
   <Today />
+{:else if view === "briefing"}
+  <Briefing />
 {:else if view === "priorities"}
   <Priorities />
 {:else if view === "board"}

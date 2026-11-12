@@ -18,6 +18,8 @@ pub mod fired;
 pub mod items;
 pub mod legacy;
 pub mod meta;
+pub mod projects;
+pub mod references;
 pub mod run_prompts;
 pub mod run_requests;
 pub mod runs;

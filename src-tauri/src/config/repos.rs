@@ -1,5 +1,5 @@
-//! `[[projects]]` in `quarterdeck.toml`: where a GitHub repo is checked out on this machine. Work Quarterdeck
-//! starts on that repo's PRs runs there, in a worktree of its own.
+//! `[[repos]]` in `quarterdeck.toml`: where a GitHub repo is checked out on this machine. Work Quarterdeck
+//! starts on that repo's PRs runs there, in a worktree of its own. Older files call them `[[projects]]`.
 
 use std::path::PathBuf;
 
@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Project {
+pub struct Checkout {
     /// `owner/repo` on GitHub.
     pub repo: String,
     /// The checkout's folder. `~` means the home folder.
@@ -18,7 +18,7 @@ pub struct Project {
     pub clean_after_run: Vec<String>,
 }
 
-impl Project {
+impl Checkout {
     /// The checkout folder with `~` expanded.
     pub fn dir(&self) -> PathBuf {
         match (self.path.strip_prefix("~/"), dirs::home_dir()) {
@@ -28,7 +28,7 @@ impl Project {
     }
 }
 
-/// The project for a repo, ignoring case as GitHub does.
-pub fn find<'a>(projects: &'a [Project], repo: &str) -> Option<&'a Project> {
-    projects.iter().find(|p| p.repo.eq_ignore_ascii_case(repo))
+/// The checkout for a repo, ignoring case as GitHub does.
+pub fn find<'a>(repos: &'a [Checkout], repo: &str) -> Option<&'a Checkout> {
+    repos.iter().find(|p| p.repo.eq_ignore_ascii_case(repo))
 }

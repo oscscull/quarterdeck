@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::config::settings::Settings;
 use crate::domain::ask::Ask;
-use crate::domain::event::Change;
+use crate::domain::event::{Change, RecordTag};
 use crate::domain::turn::Turn;
 use crate::error::{AppError, AppResult};
 use crate::store::{Db, asks, events, items};
@@ -36,7 +36,11 @@ pub async fn give(db: &Db, settings: &Settings, ask_id: i64, answer: &str) -> Ap
         return Ok(Outcome::Gone);
     };
     let text = format!("You answered “{answer}” to: {}", ask.question);
-    events::record(db, &ask.item_id, Utc::now(), &Change::Note { text }).await?;
+    let decided = Change::Record {
+        tag: RecordTag::Decision,
+        text,
+    };
+    events::record(db, &ask.item_id, Utc::now(), &decided).await?;
     asks::answer(db, ask_id, answer).await?;
     hand_over(db, settings, &ask, format!("you answered: {answer}")).await?;
     Ok(Outcome::Done)
@@ -53,7 +57,11 @@ pub async fn tell(db: &Db, settings: &Settings, item_id: &str, message: &str) ->
     };
     let id = asks::insert(db, &ask).await?;
     let text = format!("You told Claude: {message}");
-    events::record(db, item_id, Utc::now(), &Change::Note { text }).await?;
+    let said = Change::Record {
+        tag: RecordTag::Correction,
+        text,
+    };
+    events::record(db, item_id, Utc::now(), &said).await?;
     asks::answer(db, id, message).await?;
     hand_over(db, settings, &ask, format!("you said: {message}")).await
 }

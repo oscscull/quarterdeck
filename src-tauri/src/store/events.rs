@@ -16,6 +16,7 @@ fn from_row(row: EventRow) -> AppResult<ItemEvent> {
         item_id: row.item_id.into_raw(),
         at: time::get(&row.at)?,
         change: serde_json::from_value(row.change)?,
+        trace: row.trace,
     })
 }
 
@@ -40,8 +41,17 @@ pub async fn restore(db: &Db, item_id: &str, at: DateTime<Utc>, change: &Change)
         item: text_key(item_id),
         at: time::put(at),
         change: serde_json::to_value(change)?,
+        trace: change.is_trace(),
     };
     Ok(db.api().record_event(input, ()).await?)
+}
+
+/// Deletes history bookkeeping (trace) older than `before`. Records stay as long as their item.
+pub async fn expire_trace(db: &Db, before: DateTime<Utc>) -> AppResult<()> {
+    let input = client::ExpireTraceInput {
+        before: time::put(before),
+    };
+    Ok(db.api().expire_trace(input, ()).await?)
 }
 
 /// A value's serde name, e.g. `in_review`.
@@ -61,7 +71,10 @@ fn event_for(change: &Change) -> AppResult<Option<ItemEventKind>> {
         Change::Created => Some(("item.created", None)),
         Change::Stage { stage } => Some(("item.stage", Some(("stage", name(stage)?)))),
         Change::Turn { turn, .. } => Some(("item.turn", Some(("to", name(turn)?)))),
-        Change::Status { .. } | Change::Label { .. } | Change::Note { .. } => None,
+        Change::Status { .. }
+        | Change::Label { .. }
+        | Change::Note { .. }
+        | Change::Record { .. } => None,
     })
 }
 
@@ -82,7 +95,8 @@ async fn announce(db: &Db, item_id: &str, change: &Change) -> AppResult<()> {
         | Change::Stage { .. }
         | Change::Status { .. }
         | Change::Label { .. }
-        | Change::Note { .. } => String::new(),
+        | Change::Note { .. }
+        | Change::Record { .. } => String::new(),
     };
     event.about = format!("{kind} on \"{}\" ({item_id}){detail}{why}", item.title);
     fired::emit(db, &event).await

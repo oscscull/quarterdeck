@@ -67,13 +67,88 @@ export type Change =
   | { kind: "status"; status: Status | null }
   | { kind: "label"; label: string }
   | { kind: "note"; text: string }
-  | { kind: "turn"; turn: Turn; why: string };
+  | { kind: "turn"; turn: Turn; why: string }
+  | { kind: "record"; tag: RecordTag; text: string };
+
+export type RecordTag = "why" | "decision" | "change" | "blocked" | "correction" | "delivered";
 
 export interface ItemEvent {
   id: number;
   itemId: string;
   at: string;
   change: Change;
+  /** Bookkeeping rather than record. Missing from older peers. */
+  trace?: boolean;
+}
+
+export type ProjectState = "moving" | "stalled" | "quiet" | "done";
+
+/** One paragraph of a briefing. Citations are `[ref:<id>]` markers in `text`. */
+export interface Paragraph {
+  project: string | null;
+  text: string;
+}
+
+export interface Briefing {
+  done: Paragraph[];
+  now: Paragraph[];
+  next: Paragraph[];
+}
+
+export interface AreaBriefing {
+  node?: string;
+  area: string;
+  briefing: Briefing;
+  writtenAt: string;
+}
+
+export type RefKind = "you_said" | "ticket" | "pr" | "comment" | "slack" | "doc" | "commit" | "config" | "other";
+
+export interface Reference {
+  node?: string;
+  id: number;
+  area: string;
+  kind: RefKind;
+  title: string;
+  url: string | null;
+  quote: string;
+  by: "you" | "agent";
+  at: string;
+  project: string | null;
+  items: string[];
+}
+
+export interface ProjectView {
+  node?: string;
+  id: string;
+  title: string;
+  aim: string;
+  area: string;
+  state: ProjectState;
+  rank: number;
+  openedAt: string;
+  stateSince: string;
+  briefing: Briefing | null;
+  briefedAt: string | null;
+  items: WorkItem[];
+}
+
+/** One message from the Briefing's correction box, with the conversation so far. */
+export interface Correction {
+  /** What the user is looking at, in words, e.g. "the Approvals project". */
+  scope: string;
+  area: string | null;
+  project: string | null;
+  history: ChatMessage[];
+  message: string;
+}
+
+export interface BriefingView {
+  areas: AreaBriefing[];
+  projects: ProjectView[];
+  references: Reference[];
+  /** Areas whose briefing is being rewritten right now. */
+  writing: string[];
 }
 
 export interface ItemDetail {

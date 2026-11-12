@@ -27,7 +27,7 @@ the folder; `quarterdeck.toml` explains each setting in its comments. The first 
 | `node` | Name this machine. |
 | `[[areas]]` | Your areas (default Work, Projects, Life). Set each area's `node` to the machine that runs its jobs; with one machine, that's all of them. |
 | `[github.areas]` | Map GitHub owners or repos to areas. Unmapped ones go to `[github] default_area`. |
-| `[[projects]]` | Where repos are checked out. Without one, Claude can't work on that repo's PRs or issues. |
+| `[[repos]]` | Where repos are checked out. Without one, Claude can't work on that repo's PRs or issues. |
 | `[[calendar.feeds]]` | A private iCal `url`, or on a Mac a `mac_calendar` title from the Calendar app (for accounts with no iCal link, such as many work Google accounts: add the account in System Settings → Internet Accounts, and allow access when macOS asks). |
 
 Optional, all with working defaults:

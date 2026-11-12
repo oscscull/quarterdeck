@@ -12,8 +12,8 @@ use crate::turns::{self, Clock, Pass};
 
 const CLAIM: &str = "Say you're working on an item: it becomes the agent's turn. Call this when you \
 start. Quarterdeck remembers your Claude Code session (read from Claude Code; pass `session` only \
-to name another), so it can resume it with CI results, answers and prompts to carry on. Post progress as it happens (add_note, \
-update_item's state label) and hand the turn on with pass_turn when you stop. Don't poll CI: when \
+to name another), so it can resume it with CI results, answers and prompts to carry on. Keep update_item's state label \
+current, record what matters with add_record (why the work exists, a change of direction, a block) and hand the turn on with pass_turn when you stop. Don't poll CI: when \
 it finishes on this item, Quarterdeck resumes your session with the result.";
 
 pub fn tools() -> Vec<Tool> {

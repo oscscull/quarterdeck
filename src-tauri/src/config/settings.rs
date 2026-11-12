@@ -1,9 +1,10 @@
-use super::projects::Project;
 use super::queue::QueueSettings;
+use super::repos::Checkout;
 use serde::{Deserialize, Serialize};
 
 use super::Config;
 use super::alerts::AlertSettings;
+use super::briefing::BriefingSettings;
 use super::calendar::CalendarSettings;
 use super::dev::DevSettings;
 use super::github::GithubSettings;
@@ -45,6 +46,9 @@ pub struct Settings {
     pub event_ttl_days: i64,
     pub done_todo_ttl_days: i64,
     pub done_item_ttl_days: i64,
+    /// Bookkeeping in item history (stage, turn and label changes) is deleted after this long.
+    pub trace_ttl_days: i64,
+    pub briefing: BriefingSettings,
     pub areas: Vec<Area>,
     pub github: GithubSettings,
     pub calendar: CalendarSettings,
@@ -54,7 +58,11 @@ pub struct Settings {
     pub sync: SyncSettings,
     pub turns: TurnSettings,
     pub outage: OutageSettings,
-    pub projects: Vec<Project>,
+    /// Where repos are checked out.
+    pub repos: Vec<Checkout>,
+    /// `[[projects]]`, the older name for `[[repos]]`; folded into `repos` on load.
+    #[serde(rename = "projects")]
+    pub legacy_repos: Vec<Checkout>,
     /// Claude Code's `--permission-mode` for work in a project, e.g. `auto` (Claude decides what's
     /// safe, as in the user's own sessions) or `acceptEdits` (only the project's allow rules).
     pub project_permission_mode: String,
@@ -77,6 +85,8 @@ impl Default for Settings {
             event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
+            trace_ttl_days: 14,
+            briefing: BriefingSettings::default(),
             areas: Vec::new(),
             github: GithubSettings::default(),
             calendar: CalendarSettings::default(),
@@ -85,7 +95,8 @@ impl Default for Settings {
             sync: SyncSettings::default(),
             turns: TurnSettings::default(),
             outage: OutageSettings::default(),
-            projects: Vec::new(),
+            repos: Vec::new(),
+            legacy_repos: Vec::new(),
             project_permission_mode: "auto".to_owned(),
             queue: QueueSettings::default(),
             updates: UpdateSettings::default(),
@@ -154,13 +165,34 @@ impl Settings {
 }
 
 pub fn load(config: &Config) -> AppResult<Settings> {
-    let text = std::fs::read_to_string(config.root().join("quarterdeck.toml"))?;
-    Ok(toml::from_str(&text)?)
+    parse(&std::fs::read_to_string(
+        config.root().join("quarterdeck.toml"),
+    )?)
+}
+
+/// Reads settings from TOML, folding `[[projects]]` (the older name) into `repos`.
+fn parse(text: &str) -> AppResult<Settings> {
+    let mut settings: Settings = toml::from_str(text)?;
+    let legacy = std::mem::take(&mut settings.legacy_repos);
+    settings.repos.extend(legacy);
+    Ok(settings)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_projects_tables_read_as_repos() {
+        let text = "[[projects]]\nrepo = \"me/a\"\npath = \"~/a\"\n\n[[repos]]\nrepo = \"me/b\"\npath = \"~/b\"\n";
+        let repos: Vec<String> = parse(text)
+            .unwrap()
+            .repos
+            .into_iter()
+            .map(|r| r.repo)
+            .collect();
+        assert_eq!(repos, ["me/b", "me/a"]);
+    }
 
     #[test]
     fn a_set_claude_user_wins() {
@@ -195,6 +227,8 @@ mod tests {
             event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
+            trace_ttl_days: 14,
+            briefing: BriefingSettings::default(),
             areas: vec![area("work", "work-mac"), area("life", "home-mac")],
             github: GithubSettings::default(),
             calendar: CalendarSettings::default(),
@@ -203,7 +237,8 @@ mod tests {
             sync: SyncSettings::default(),
             turns: TurnSettings::default(),
             outage: OutageSettings::default(),
-            projects: Vec::new(),
+            repos: Vec::new(),
+            legacy_repos: Vec::new(),
             project_permission_mode: "auto".to_owned(),
             queue: QueueSettings::default(),
             updates: UpdateSettings::default(),

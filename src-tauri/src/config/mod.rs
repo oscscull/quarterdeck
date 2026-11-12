@@ -6,6 +6,7 @@ mod frontmatter;
 
 pub mod alerts;
 pub mod branches;
+pub mod briefing;
 pub mod calendar;
 pub mod dev;
 pub mod edit;
@@ -16,9 +17,9 @@ pub mod issues;
 pub mod keys;
 pub mod outage;
 pub mod pause;
-pub mod projects;
 pub mod prompts;
 pub mod queue;
+pub mod repos;
 pub mod schedules;
 pub mod settings;
 pub mod sync;

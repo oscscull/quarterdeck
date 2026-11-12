@@ -7,7 +7,7 @@ CI is failing on {{item}}: "{{title}}" ({{link}}). Nobody was on it, so Quarterd
 3. Otherwise fix it: make the change, run the checks you can, commit and push. A failure in this
    PR's code, tests, lints or build is yours to fix, even if it takes a few attempts.
 4. Only if the fix needs the user (a secret or credential, access you don't have, a choice about
-   how it should behave), record the cause with add_note on {{item}}, keep its state label current
+   how it should behave), record the cause in a plain sentence with add_record (tag `blocked`) on {{item}}, keep its state label current
    with update_item, and raise an ask with add_ask, offering options where it's a choice.
 
 Reply with one short sentence.
