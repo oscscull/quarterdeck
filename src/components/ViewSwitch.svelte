@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../lib/copy";
-  import { VIEWS, viewLabel, type ViewId } from "../lib/views";
+  import { PRIMARY_VIEWS, SECONDARY_VIEWS, viewLabel, type ViewId } from "../lib/views";
 
   interface Props {
     view: ViewId;
@@ -10,21 +10,35 @@
   let { view, onSelect }: Props = $props();
 </script>
 
+{#snippet tab(id: ViewId)}
+  <button
+    type="button"
+    class:active={id === view}
+    aria-current={id === view ? "page" : undefined}
+    onclick={() => onSelect(id)}
+  >
+    {t(viewLabel(id))}
+  </button>
+{/snippet}
+
 <nav aria-label="Views">
-  {#each VIEWS as id (id)}
-    <button
-      type="button"
-      class:active={id === view}
-      aria-current={id === view ? "page" : undefined}
-      onclick={() => onSelect(id)}
-    >
-      {t(viewLabel(id))}
-    </button>
-  {/each}
+  <div class="group">
+    {#each PRIMARY_VIEWS as id (id)}{@render tab(id)}{/each}
+  </div>
+  <div class="group secondary">
+    {#each SECONDARY_VIEWS as id (id)}{@render tab(id)}{/each}
+  </div>
 </nav>
 
 <style>
   nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .group {
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
@@ -40,6 +54,21 @@
     background: transparent;
     color: var(--muted);
     font-size: 14px;
+  }
+
+  .secondary {
+    opacity: 0.75;
+  }
+
+  .secondary button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .secondary:hover,
+  .secondary:focus-within,
+  .secondary:has(.active) {
+    opacity: 1;
   }
 
   .active {
