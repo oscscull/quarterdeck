@@ -5,6 +5,7 @@
 )]
 
 mod approve;
+mod archive;
 mod asks;
 mod briefing;
 mod commitments;
@@ -46,6 +47,7 @@ pub fn all() -> Vec<Tool> {
     [
         overview::tools(),
         items::tools(),
+        archive::tools(),
         asks::tools(),
         todos::tools(),
         commitments::tools(),

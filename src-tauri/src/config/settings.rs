@@ -46,6 +46,8 @@ pub struct Settings {
     pub event_ttl_days: i64,
     pub done_todo_ttl_days: i64,
     pub done_item_ttl_days: i64,
+    /// Done items leave the board for the archive this long after they finish.
+    pub archive_done_days: i64,
     /// Bookkeeping in item history (stage, turn and label changes) is deleted after this long.
     pub trace_ttl_days: i64,
     pub briefing: BriefingSettings,
@@ -85,6 +87,7 @@ impl Default for Settings {
             event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
+            archive_done_days: 2,
             trace_ttl_days: 14,
             briefing: BriefingSettings::default(),
             areas: Vec::new(),
@@ -227,6 +230,7 @@ mod tests {
             event_ttl_days: 3,
             done_todo_ttl_days: 1,
             done_item_ttl_days: 30,
+            archive_done_days: 2,
             trace_ttl_days: 14,
             briefing: BriefingSettings::default(),
             areas: vec![area("work", "work-mac"), area("life", "home-mac")],
