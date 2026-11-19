@@ -35,6 +35,9 @@ pub enum SettingKey {
     /// Days done items and their history are kept (number).
     #[serde(rename = "done_item_ttl_days")]
     DoneItemTtlDays,
+    /// Days done items stay on the board before moving to the archive (number).
+    #[serde(rename = "archive_done_days")]
+    ArchiveDoneDays,
     /// Start Quarterdeck at login (true/false).
     #[serde(rename = "launch_at_login")]
     LaunchAtLogin,
@@ -112,6 +115,7 @@ impl SettingKey {
             Self::EventTtlDays => "event_ttl_days",
             Self::DoneTodoTtlDays => "done_todo_ttl_days",
             Self::DoneItemTtlDays => "done_item_ttl_days",
+            Self::ArchiveDoneDays => "archive_done_days",
             Self::LaunchAtLogin => "launch_at_login",
             Self::ProjectPermissionMode => "project_permission_mode",
             Self::GithubEnabled => "github.enabled",

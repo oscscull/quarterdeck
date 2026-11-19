@@ -1,8 +1,8 @@
 import type { CopyKey } from "./copy";
 
-export type ViewId = "today" | "briefing" | "priorities" | "board" | "agent";
+export type ViewId = "today" | "briefing" | "priorities" | "board" | "archive" | "agent";
 
-export const VIEWS: readonly ViewId[] = ["today", "briefing", "priorities", "board", "agent"];
+export const VIEWS: readonly ViewId[] = ["today", "briefing", "priorities", "board", "archive", "agent"];
 
 export const viewLabel = (view: ViewId): CopyKey => `view.${view}`;
 

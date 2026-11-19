@@ -52,6 +52,7 @@ export const api = {
   deleteTodo: (id: number) => invoke<undefined>("delete_todo", { id }),
   today: () => invoke<TodayView>("today"),
   workItems: () => invoke<WorkItem[]>("work_items"),
+  archivedItems: () => invoke<WorkItem[]>("archived_items"),
   agent: () => invoke<AgentView>("agent"),
   briefing: () => invoke<BriefingView>("briefing"),
   correctBriefing: (correction: Correction) => invoke<string>("correct_briefing", { correction }),

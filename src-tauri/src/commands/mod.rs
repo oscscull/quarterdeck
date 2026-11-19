@@ -55,6 +55,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         todos::update_todo,
         todos::delete_todo,
         screens::work_items,
+        screens::archived_items,
         screens::agent,
         runs::live_runs,
         runs::run_log,

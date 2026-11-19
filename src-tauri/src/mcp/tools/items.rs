@@ -1,10 +1,11 @@
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::super::ctx::Ctx;
 use super::super::tool::{Tool, async_tool};
 use super::{in_area, time};
+use crate::domain::archive;
 use crate::domain::event::{Change, RecordTag};
 use crate::domain::item::{ItemInput, Stage, Status, WorkItem};
 use crate::domain::trigger::OnEvent;
@@ -15,7 +16,8 @@ use crate::turns::Clock;
 use crate::work;
 
 const LIST_ITEMS: &str = "Work items (tickets, PRs, issues, personal projects) in priority order, highest \
-             first. `parked` lists only parked work (on a later turn).";
+             first. `include_done` adds work done within `archive_done_days`; older done work is in \
+             list_archived_items. `parked` lists only parked work (on a later turn).";
 const GET_ITEM: &str = "One item with its open asks and its history.";
 const CREATE_ITEM: &str = "Adds a work item to the bottom of the priorities. Use the ticket key as `key` when there \
              is one (e.g. JD-104). Every new item is the user's turn, on Today: up next (the \
@@ -69,7 +71,7 @@ struct ListArgs {
     area: Option<String>,
     /// Only this stage.
     stage: Option<Stage>,
-    /// Include done items. Defaults to false.
+    /// Include done items not yet archived. Defaults to false.
     #[serde(default)]
     include_done: bool,
     /// List the parked items instead. Defaults to false.
@@ -80,10 +82,11 @@ struct ListArgs {
 }
 
 async fn list(ctx: Ctx, args: ListArgs) -> AppResult<Vec<WorkItem>> {
+    let after = Duration::days(ctx.settings()?.archive_done_days);
     let mut all = if args.parked {
         crate::park::list(&ctx.db).await?
     } else {
-        items::list(&ctx.db).await?
+        archive::select(items::list(&ctx.db).await?, false, Utc::now(), after)
     };
     let membership = items::projects(&ctx.db).await?;
     all.retain(|i| {
