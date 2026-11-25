@@ -13,13 +13,17 @@ pub fn tools() -> Vec<Tool> {
     vec![
         async_tool(
             "list_todos",
-            "To-dos: things only the user can do, like errands and bookings. Open ones first, soonest due first.",
+            "To-dos: the user's personal errands, outside any work item, like \"Make dinner\" or a \
+             booking. Open ones first, soonest due first.",
             list,
         ),
         async_tool(
             "add_todo",
-            "Adds a to-do for the user, e.g. \"Make dinner\" due Friday. Use for things they must do \
-             themselves; use work items for work you or others will carry.",
+            "Adds a personal to-do for the user, e.g. \"Make dinner\" due Friday: an errand of their \
+             own that belongs to no work item. Never for anything that comes out of work, even a \
+             step only they can do (a DNS record, a login, a deploy, a decision): keep that on its \
+             item with pass_turn to `you` and a `need`, or add_ask; new work an agent could carry \
+             is a new item (create_item).",
             add,
         ),
         async_tool(

@@ -10,7 +10,8 @@ const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
 const INSTRUCTIONS: &str = "Quarterdeck is the user's calm work-and-life dashboard. Use these tools to \
 read what is going on (start with get_overview) and to keep it current: create and update work \
-items, raise asks when a decision needs the user, add to-dos for things only they can do, post \
+items, raise asks when a decision needs the user, keep every step of the work on its item (even \
+the ones only the user can do), add to-dos only for their personal errands, post \
 short updates about what you did, and manage recurring schedules. Every item in flight is \
 someone's turn: when you take one on, claim_item; when you stop, hand it on with pass_turn. Keep \
 state labels under six words. Prefer updating an existing item over creating a duplicate.";

@@ -1,6 +1,8 @@
 You're in a git worktree of {{repo}} on a new branch, `{{branch}}`, cut from the latest default
 branch to fix issue #{{number}} (its text is at the end of this message). It's yours alone; the
-user's own checkout isn't affected. GitHub may be out of reach from here, so Quarterdeck does that side.
+user's own checkout isn't affected. GitHub may be out of reach from here, so Quarterdeck does that side. If the work needs something
+on GitHub that Quarterdeck won't do (an issue in another repo, say), put it on this item with the
+draft text (add_ask, or pass_turn to `you`), never in a to-do.
 
 1. Fix the issue, with tests, following the repo's own instructions (CLAUDE.md, CONTRIBUTING, Makefile).
 2. Run the repo's checks and make them pass.
