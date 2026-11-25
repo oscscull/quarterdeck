@@ -52,6 +52,9 @@ export const api = {
   deleteTodo: (id: number) => invoke<undefined>("delete_todo", { id }),
   today: () => invoke<TodayView>("today"),
   workItems: () => invoke<WorkItem[]>("work_items"),
+  /** False if GitHub is turned off. */
+  syncGithub: () => invoke<boolean>("sync_github"),
+  githubSyncing: () => invoke<boolean>("github_syncing"),
   agent: () => invoke<AgentView>("agent"),
   briefing: () => invoke<BriefingView>("briefing"),
   correctBriefing: (correction: Correction) => invoke<string>("correct_briefing", { correction }),
