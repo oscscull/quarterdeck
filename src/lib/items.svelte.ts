@@ -25,6 +25,29 @@ export function workItems() {
   return { state, load };
 }
 
+/** When an item was done, newest first. */
+const doneLatest = (a: WorkItem, b: WorkItem): number => new Date(b.stateSince).getTime() - new Date(a.stateSince).getTime();
+
+/** Done items that have left the board, from every machine, most recently done first. */
+export function archivedItems() {
+  const state = $state({ items: [] as WorkItem[], error: "", now: new Date() });
+
+  async function load(): Promise<void> {
+    try {
+      const [local, remote] = await Promise.all([api.archivedItems(), fromPeers<WorkItem[]>("list_archived_items")]);
+      // A peer on an older build has no archive; its done items stay on its board.
+      const peerItems = remote.flatMap((r) => tag(r.value, r.node));
+      state.items = [...local, ...peerItems].sort(doneLatest);
+      state.now = new Date();
+      state.error = "";
+    } catch (e) {
+      state.error = errorText(e);
+    }
+  }
+
+  return { state, load };
+}
+
 /** When parked work comes back; one with no time sorts last. */
 const backAt = (i: WorkItem): number => (i.turnUntil ? new Date(i.turnUntil).getTime() : Infinity);
 

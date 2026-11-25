@@ -55,7 +55,10 @@ The window title shows the running version, so it's clear when an update has lan
   shows its stage, whose turn it is, its state and (once started) how long it has been open; a filter
   narrows the list to one side's turn, and ranking still works within it. Below, **Parked**: soonest
   back first, each with its note, when it's back and to whom, and a countdown.
-- **Board**: items by stage; parked work is left out.
+- **Board**: items by stage; parked work is left out, and done work leaves after
+  `archive_done_days` (by when its state last changed).
+- **Archive**: done work that has left the board, from every machine (`list_archived_items`), most
+  recently done first, until `done_item_ttl_days` deletes it.
 - **An item** opens with what's needed from the user when it's their turn (the need, or the
   questions asked), the reply box, then its state, links and (collapsed) history: its record, with
   the trace folded under it.

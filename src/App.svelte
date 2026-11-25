@@ -12,6 +12,7 @@
   import { showVersion } from "./lib/version";
   import { suggestionKeys, viewLabel } from "./lib/views";
   import Agent from "./views/Agent.svelte";
+  import Archive from "./views/Archive.svelte";
   import Board from "./views/Board.svelte";
   import Briefing from "./views/Briefing.svelte";
   import Priorities from "./views/Priorities.svelte";
@@ -42,6 +43,8 @@
   <Priorities />
 {:else if view === "board"}
   <Board />
+{:else if view === "archive"}
+  <Archive />
 {:else}
   <Agent />
 {/if}
