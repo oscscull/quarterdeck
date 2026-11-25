@@ -10,14 +10,20 @@ use crate::error::AppResult;
 use crate::lasting::{Card, Lasting};
 use crate::store::meta;
 
+use super::syncing;
+
 /// The screen reloads when it hears this, so a sync's changes show without waiting.
 pub const SYNCED: &str = "synced";
+
+fn last_sync_key(name: &str) -> String {
+    format!("connector.{name}.last_sync")
+}
 
 /// True if `name` hasn't synced within `gap`, claiming the slot so the next tick doesn't start
 /// a second sync.
 pub(super) async fn claim(handle: &AppHandle, name: &str, gap: Duration) -> AppResult<bool> {
     let app = handle.state::<App>();
-    let key = format!("connector.{name}.last_sync");
+    let key = last_sync_key(name);
     let now = Utc::now();
     let last = meta::time(&app.db, &key).await?;
     if last.is_some_and(|t| now - t < gap) {
@@ -59,15 +65,33 @@ async fn raise_if_lasting(handle: &AppHandle, error: Option<&str>, after: Durati
 }
 
 /// Syncs GitHub in the background and tells the screen. Its events start schedules next tick.
+/// Does nothing while another GitHub sync is running.
 pub(super) fn spawn_github(handle: &AppHandle, failing_after: Duration) {
+    if !syncing::start(handle) {
+        return;
+    }
     let handle = handle.clone();
     tauri::async_runtime::spawn(async move {
         let error = github::sync(&handle).await.err().map(|e| e.to_string());
+        syncing::finish();
         record(&handle, github::SOURCE, error.as_deref()).await;
         raise_if_lasting(&handle, error.as_deref(), failing_after).await;
         // The screen also reloads on its own timer, so a missed event only delays it.
         drop(handle.emit(SYNCED, ()));
     });
+}
+
+/// Syncs GitHub now, whenever it last ran. False if GitHub is turned off.
+pub async fn sync_github_now(handle: &AppHandle) -> AppResult<bool> {
+    let settings = handle.state::<App>().settings()?.github;
+    if !settings.enabled {
+        return Ok(false);
+    }
+    // Counts as the latest sync, so the poll doesn't start another straight after.
+    let db = &handle.state::<App>().db;
+    meta::set_time(db, &last_sync_key(github::SOURCE), Utc::now()).await?;
+    spawn_github(handle, Duration::minutes(settings.failing_minutes));
+    Ok(true)
 }
 
 pub async fn sync_if_due(handle: &AppHandle, settings: &Settings) -> AppResult<()> {

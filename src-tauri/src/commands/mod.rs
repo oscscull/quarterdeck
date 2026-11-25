@@ -15,6 +15,7 @@ pub mod calendars;
 pub mod chat;
 pub mod commitments;
 pub mod connect;
+pub mod github;
 pub mod items;
 pub mod outage;
 pub mod peers;
@@ -55,6 +56,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         todos::update_todo,
         todos::delete_todo,
         screens::work_items,
+        github::sync_github,
+        github::github_syncing,
         screens::archived_items,
         screens::agent,
         runs::live_runs,
