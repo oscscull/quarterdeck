@@ -48,13 +48,12 @@ The window title shows the running version, so it's clear when an update has lan
   turn on it needs; the first `priority_limit` show), one line for GitHub issues nobody has picked up yet
   (opens to the list), To do (things only the user can do, each with an optional link), and "From
   Claude". Under Priorities, one line counts parked work and says when the next is back; it opens
-  Priorities.
+  Priorities. Beside it, a button syncs GitHub now; it shows a spinner while any GitHub sync runs.
 - **Briefing**: a plain account of the work, so the user and the agents share one picture (see
   Projects and the Briefing). Everything (combined) or one project at a time, behind the area switch.
 - **Priorities**: everything in play, drag to rank (per machine). The ranking drives Today. Each row
   shows its stage, whose turn it is, its state and (once started) how long it has been open; a filter
-  narrows the list to one side's turn, and ranking still works within it. Under the list, a button
-  syncs GitHub now; it shows a spinner while any GitHub sync runs. Below, **Parked**: soonest
+  narrows the list to one side's turn, and ranking still works within it. Below, **Parked**: soonest
   back first, each with its note, when it's back and to whom, and a countdown.
 - **Board**: items by stage; parked work is left out.
 - **An item** opens with what's needed from the user when it's their turn (the need, or the
@@ -174,7 +173,7 @@ the fields it owns when they change upstream; hidden or re-filed records stay th
   with the commit, and asks the user only about judgement calls. An item is closed
   only when `gh` says its PR merged or closed, never because the open-PR search missed it. Syncs
   every `poll_minutes`, and at once when the window regains focus (at most every
-  `focus_sync_seconds`) or from the button on Priorities, after which the screen reloads. Only one
+  `focus_sync_seconds`) or from the button on Today, after which the screen reloads. Only one
   sync runs at a time.
 - **GitHub issues**: open issues of the owners and repos in `[github.issues] watch` become items to
   triage (up next, the user's turn, counted on Today's triage line), filed by `[github.areas]` like PRs and synced by the machine that
