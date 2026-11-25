@@ -18,7 +18,6 @@
   import { reorder } from "../lib/rank";
   import { route } from "../lib/route";
   import type { WorkItem } from "../lib/types";
-  import SyncButton from "./priorities/SyncButton.svelte";
 
   const { state: list, load } = workItems();
   let dragging = $state<string | null>(null);
@@ -125,7 +124,6 @@
       <li class="hint empty">{t(filter === "all" ? "empty.priorities" : "empty.prioritiesTurn")}</li>
     {/each}
   </ol>
-  <SyncButton />
 
   <section class="parked" aria-label={t("parked.title")}>
     <h2 class="section-label">{t("parked.title")} <span class="mono count">{parkedHere.length}</span></h2>

@@ -24,6 +24,7 @@
   import TodoList from "./today/TodoList.svelte";
   import TriageLine from "./today/TriageLine.svelte";
   import ParkedLine from "./today/ParkedLine.svelte";
+  import SyncButton from "./today/SyncButton.svelte";
   import UrgentModal from "./today/UrgentModal.svelte";
   import UrgentPill from "./today/UrgentPill.svelte";
 
@@ -128,11 +129,16 @@
           {/if}
         {/each}
       </ul>
-      {#if hiddenPriorities > 0}
-        <button type="button" class="link more" onclick={() => (nav.view = "priorities")}>{t("today.more", { n: hiddenPriorities })}</button>
-      {/if}
-      <TriageLine issues={triage} />
-      <ParkedLine items={parked.items.filter(inArea)} {now} />
+      <div class="footer">
+        <div>
+          {#if hiddenPriorities > 0}
+            <button type="button" class="link more" onclick={() => (nav.view = "priorities")}>{t("today.more", { n: hiddenPriorities })}</button>
+          {/if}
+          <TriageLine issues={triage} />
+          <ParkedLine items={parked.items.filter(inArea)} {now} />
+        </div>
+        <SyncButton />
+      </div>
     </section>
 
     <TodoList {todos} {now} onChanged={load} />
@@ -163,6 +169,13 @@
 {/if}
 
 <style>
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
   .more {
     margin-top: 8px;
   }
