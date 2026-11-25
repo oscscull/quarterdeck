@@ -6,6 +6,7 @@
   import { STAGES } from "../lib/groups";
   import { ALL, areas, inArea } from "../lib/areas.svelte";
   import { chatContext } from "../lib/chat.svelte";
+  import { nav } from "../lib/nav.svelte";
   import { workItems } from "../lib/items.svelte";
   import { poll } from "../lib/poll";
 
@@ -41,6 +42,9 @@
           {#each col.items as item (`${item.node ?? ""}${item.id}`)}
             <ItemCard {item} now={list.now} />
           {/each}
+          {#if col.stage === "done"}
+            <button type="button" class="archive hint" onclick={() => (nav.view = "archive")}>{t("archive.open")}</button>
+          {/if}
         </section>
       {/each}
     </div>
@@ -89,5 +93,14 @@
 
   .count {
     font-size: 12px;
+  }
+
+  .archive {
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    font-size: 13px;
+    text-align: left;
+    text-decoration: underline;
   }
 </style>

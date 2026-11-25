@@ -40,6 +40,8 @@ event_ttl_days = 3
 done_todo_ttl_days = 1
 # Done work items, with their history, are deleted this long after they finish.
 done_item_ttl_days = 30
+# Done items leave the board's Done column for the Archive tab this long after they finish.
+archive_done_days = 2
 # Bookkeeping in an item's history (stage, turn and label changes), as opposed to its record.
 trace_ttl_days = 14
 

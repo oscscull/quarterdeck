@@ -58,6 +58,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         screens::work_items,
         github::sync_github,
         github::github_syncing,
+        screens::archived_items,
         screens::agent,
         runs::live_runs,
         runs::run_log,

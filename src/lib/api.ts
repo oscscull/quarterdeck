@@ -55,6 +55,7 @@ export const api = {
   /** False if GitHub is turned off. */
   syncGithub: () => invoke<boolean>("sync_github"),
   githubSyncing: () => invoke<boolean>("github_syncing"),
+  archivedItems: () => invoke<WorkItem[]>("archived_items"),
   agent: () => invoke<AgentView>("agent"),
   briefing: () => invoke<BriefingView>("briefing"),
   correctBriefing: (correction: Correction) => invoke<string>("correct_briefing", { correction }),
