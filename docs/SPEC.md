@@ -46,7 +46,7 @@ The window title shows the running version, so it's clear when an update has lan
 
 - **Today**: next meeting, Priorities (in rank order: questions on an item, else what the user's
   turn on it needs; the first `priority_limit` show), one line for GitHub issues nobody has picked up yet
-  (opens to the list), To do (things only the user can do, each with an optional link), and "From
+  (opens to the list), To do (the user's personal errands, outside any work item, each with an optional link), and "From
   Claude". Under Priorities, one line counts parked work and says when the next is back; it opens
   Priorities.
 - **Briefing**: a plain account of the work, so the user and the agents share one picture (see

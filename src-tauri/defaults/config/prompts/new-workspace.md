@@ -1,6 +1,8 @@
 You're in a git worktree of {{repo}} on a new branch, `{{branch}}`, cut from the latest default
 branch for this item's work. It's yours alone; the user's own checkout isn't affected. GitHub may
-be out of reach from here, so Quarterdeck does that side.
+be out of reach from here, so Quarterdeck does that side. If the work needs something
+on GitHub that Quarterdeck won't do (an issue in another repo, say), put it on this item with the
+draft text (add_ask, or pass_turn to `you`), never in a to-do.
 
 1. Do what the item and the user's message ask, with tests, following the repo's own instructions
    (CLAUDE.md, CONTRIBUTING, Makefile).

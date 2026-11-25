@@ -110,6 +110,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn agent_prompts_keep_work_off_the_todo_list() {
+        // To-dos are the user's personal errands. Only the chat prompt, where the user asks for
+        // one, may mention add_todo; every agent job hands work to the user on its item.
+        for (path, text) in FILES {
+            if path.starts_with("prompts/") && path != "prompts/chat.md" {
+                assert!(!text.contains("add_todo"), "{path} offers add_todo");
+                assert!(
+                    !text.contains("things only they"),
+                    "{path} sends work to to-dos"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn only_unedited_defaults_follow_updates() {
         let old = fingerprint("old default");
         assert!(should_write(None, None, "prompts/a.md"));

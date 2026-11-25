@@ -215,7 +215,7 @@
   "area.label": "Areas",
   "area.unknown": "Unknown area",
   "todo.title": "To do",
-  "todo.hint": "Things only you can do. Claude reminds you, and can help plan them.",
+  "todo.hint": "Your own errands, outside tracked work. Claude reminds you, and can help plan them.",
   "todo.add": "Add",
   "todo.what": "What",
   "todo.placeholder": "e.g. Book the car service",
